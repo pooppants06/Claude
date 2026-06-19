@@ -7,7 +7,12 @@ import {
   classifyPolymarketMarket,
   type RawPolymarketMarket,
 } from "../src/sources/polymarket/classify.js";
-import { buildPolymarketMarkets, extractSlug } from "../src/sources/polymarket/gamma.js";
+import {
+  buildPolymarketMarkets,
+  extractSlug,
+  matchCore,
+  sameMatch,
+} from "../src/sources/polymarket/gamma.js";
 import { generateNorskTippingMarkets } from "../src/sources/norsktipping/mock.js";
 import { compareMarkets } from "../src/compare/compare.js";
 import type { MatchMeta, TeamInfo } from "../src/types.js";
@@ -144,6 +149,20 @@ test("compareMarkets merges both books and ranks by biggest difference", () => {
   const firstSingle = snap.markets.findIndex((m) => !m.hasBoth);
   const lastBoth = snap.markets.map((m) => m.hasBoth).lastIndexOf(true);
   if (firstSingle !== -1) assert.ok(lastBoth < firstSingle);
+});
+
+test("matchCore + sameMatch group a match's sibling events but exclude others", () => {
+  const base = "fifwc-bra-hai-2026-06-19";
+  const core = matchCore(base);
+  assert.equal(core, "bra-hai-2026-06-19");
+  // Same match (sibling market events) -> kept.
+  assert.equal(sameMatch("fifwc-bra-hai-2026-06-19", base, core), true);
+  assert.equal(sameMatch("fifwc-bra-hai-2026-06-19-exact-score", base, core), true);
+  assert.equal(sameMatch("bra-hai-2026-06-19-total-goals", base, core), true);
+  // Different match / tournament-wide events -> excluded.
+  assert.equal(sameMatch("fifwc-usa-aus-2026-06-19-exact-score", base, core), false);
+  assert.equal(sameMatch("world-cup-player-to-score", base, core), false);
+  assert.equal(sameMatch("fifwc-bra-hai-2026-06-20", base, core), false);
 });
 
 test("classifyTeamSide resolves codes and names", () => {

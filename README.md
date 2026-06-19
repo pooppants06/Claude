@@ -172,6 +172,25 @@ npm test        # unit tests (offline, no network)
 npm run typecheck
 ```
 
+## Troubleshooting: "Polymarket is missing exact score / over-under / etc."
+
+Polymarket splits a single match across **several events** — the link you paste
+is usually just the **match-winner** market, while exact score, totals,
+player-to-score and so on are **separate events** with their own slugs (e.g.
+`…-exact-score`). The app discovers and merges these automatically
+(`POLYMARKET_FETCH_RELATED=true`).
+
+If some are still missing, the sibling slug didn't match the built-in suffix
+list. To see exactly what Polymarket returns for a match, open:
+
+```
+http://localhost:3000/api/debug/polymarket?slug=<the-slug>
+```
+
+It lists every event/market found and anything that couldn't be classified. Add
+any missing suffixes via `POLYMARKET_RELATED_SLUGS` in `.env` (no code change
+needed). The same summary is printed to the terminal on every match load.
+
 ## Notes & limitations
 
 - Odds comparison is for information only — not betting advice.

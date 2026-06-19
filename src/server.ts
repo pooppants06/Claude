@@ -14,7 +14,7 @@ import express from "express";
 import { WebSocketServer, WebSocket } from "ws";
 import { config } from "./config.js";
 import { Tracker } from "./tracker.js";
-import { extractSlug } from "./sources/polymarket/gamma.js";
+import { extractSlug, fetchPolymarketEvent } from "./sources/polymarket/gamma.js";
 import type { ComparisonSnapshot } from "./compare/compare.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -112,6 +112,33 @@ app.get("/api/snapshot", (req, res) => {
   const entry = entries.get(slug);
   if (!entry?.snapshot) return res.status(404).json({ error: "No snapshot for that slug." });
   res.json(entry.snapshot);
+});
+
+// Diagnostic: shows exactly which Polymarket events/markets were discovered for a
+// slug, plus anything we couldn't classify. Open in a browser and share the JSON.
+app.get("/api/debug/polymarket", async (req, res) => {
+  const input = String(req.query.slug ?? req.query.url ?? "").trim();
+  if (!input) return res.status(400).json({ error: "Provide ?slug=<slug-or-url>" });
+  try {
+    const ev = await fetchPolymarketEvent(input);
+    res.json({
+      slug: ev.meta.slug,
+      teams: ev.meta.teams,
+      eventSlugs: ev.eventSlugs,
+      stats: ev.stats,
+      markets: ev.markets.map((m) => ({
+        key: m.key,
+        label: m.label,
+        selections: m.selections.map((s) => ({
+          key: s.key,
+          label: s.label,
+          decimal: s.quotes.polymarket?.decimal ?? null,
+        })),
+      })),
+    });
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message });
+  }
 });
 
 const server = http.createServer(app);

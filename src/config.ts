@@ -18,6 +18,18 @@ function num(name: string, fallback: number): number {
 export type NorskTippingProvider = "mock" | "http";
 export type PolymarketProvider = "gamma" | "demo";
 
+// Polymarket splits one match across several events (the pasted slug is usually
+// just the match-winner market). These suffixes are appended to the base slug to
+// discover the sibling events (exact score, totals, …). Refine via env once we
+// see the real slugs in the logs / debug endpoint.
+const DEFAULT_RELATED_SUFFIXES = [
+  "-exact-score", "-correct-score", "-total-goals", "-total", "-over-under",
+  "-both-teams-to-score", "-btts", "-double-chance", "-draw-no-bet",
+  "-half-time-result", "-half-time", "-halftime", "-first-half", "-1st-half",
+  "-odd-even", "-clean-sheet", "-to-score", "-anytime-goalscorer",
+  "-first-goalscorer", "-player-to-score",
+].join(",");
+
 export const config = {
   port: num("PORT", 3000),
   snapshotIntervalMs: num("SNAPSHOT_INTERVAL_MS", 1000),
@@ -34,6 +46,13 @@ export const config = {
       "wss://ws-subscriptions-clob.polymarket.com/ws/market",
     ),
     demoJitterMs: num("POLYMARKET_DEMO_JITTER_MS", 2500),
+    // Discover & merge the match's sibling events (exact score, totals, …).
+    fetchRelated: env("POLYMARKET_FETCH_RELATED", "true") !== "false",
+    relatedSuffixes: env("POLYMARKET_RELATED_SLUGS", DEFAULT_RELATED_SUFFIXES)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+    maxRelatedFetches: num("POLYMARKET_MAX_RELATED", 28),
   },
 
   norskTipping: {
