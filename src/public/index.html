@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OddsEdge — Polymarket vs Norsk Tipping</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">⚖️</span>
+        <div>
+          <h1>OddsEdge</h1>
+          <p>Live odds comparison · <span class="src pm">Polymarket</span> vs <span class="src nt">Norsk Tipping</span></p>
+        </div>
+      </div>
+      <div id="conn" class="conn" title="Live connection">offline</div>
+    </header>
+
+    <section class="controls">
+      <form id="trackForm">
+        <input
+          id="urlInput"
+          type="text"
+          autocomplete="off"
+          placeholder="Paste a Polymarket match link, e.g. https://polymarket.com/sports/world-cup/fifwc-bra-hai-2026-06-19"
+        />
+        <button type="submit" id="trackBtn">Compare odds</button>
+      </form>
+      <div class="examples">
+        <span>Try:</span>
+        <button class="chip" data-url="https://polymarket.com/sports/world-cup/fifwc-usa-aus-2026-06-19">USA – AUS</button>
+        <button class="chip" data-url="https://polymarket.com/sports/world-cup/fifwc-sco-mar-2026-06-19">SCO – MAR</button>
+        <button class="chip" data-url="https://polymarket.com/sports/world-cup/fifwc-bra-hai-2026-06-19">BRA – HAI</button>
+      </div>
+      <div id="error" class="error hidden"></div>
+    </section>
+
+    <main id="results" class="hidden">
+      <section class="matchhead">
+        <div>
+          <h2 id="matchTitle"></h2>
+          <p id="matchSub" class="muted"></p>
+        </div>
+        <div class="feeds">
+          <div class="feed"><span class="dot pm" id="pmDot"></span> Polymarket: <b id="pmStatus">—</b></div>
+          <div class="feed"><span class="dot nt" id="ntDot"></span> Norsk Tipping: <b id="ntStatus">—</b></div>
+          <div class="feed muted" id="updated"></div>
+        </div>
+      </section>
+
+      <section class="summary" id="summary"></section>
+
+      <section>
+        <h3 class="section-title">Biggest odds differences</h3>
+        <div id="highlights" class="highlights"></div>
+      </section>
+
+      <section>
+        <h3 class="section-title">All markets <span class="muted" id="marketCount"></span></h3>
+        <div id="markets" class="markets"></div>
+      </section>
+
+      <footer class="legend">
+        <p>
+          <b>Diff%</b> = how much higher the better book's decimal odds are for that pick.
+          <b>Value</b> tags the book paying more, with an estimated edge vs the two-book consensus
+          (vig-removed). Polymarket prices come from its live CLOB order book; decimal odds = 1 / price.
+        </p>
+      </footer>
+    </main>
+
+    <div id="placeholder" class="placeholder">
+      <p>Paste a Polymarket soccer link above to see how its odds stack up against Norsk Tipping — updated live.</p>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
