@@ -89,7 +89,7 @@ function detectType(
   if (/draw no bet|dnb/.test(t)) return "DRAW_NO_BET";
   if (/both teams to score|btts|begge lag scorer/.test(t)) return "BTTS";
   if (/half.?time.*full.?time|ht\/ft|ht-ft/.test(t)) return "HT_FT";
-  if (/correct score|riktig resultat/.test(t) || outcomes.some((o) => SCORE_RE.test(o)))
+  if (/correct score|exact score|riktig resultat/.test(t) || outcomes.some((o) => SCORE_RE.test(o)))
     return "CORRECT_SCORE";
   if (/(odd|even|partall|oddetall)/.test(t)) return "ODD_EVEN";
   if (/(first|1st).*goalscorer|first.*to score/.test(t)) return "FIRST_GOALSCORER";
@@ -183,6 +183,17 @@ export function classifyPolymarketMarket(
       if (side && /^(yes|ja)$/i.test(label)) {
         const ss = sideToSelection(side, teams);
         out.push({ ...base, selectionKey: ss.key, selectionLabel: ss.label, order: ss.order });
+      }
+      return;
+    }
+
+    // Binary "exact score" sub-market: the score lives in the subject/group
+    // title (e.g. "Argentina 1 - 0 Austria"); keep only the Yes leg.
+    if (isBinaryYesNo && type === "CORRECT_SCORE") {
+      const m = subject.match(SCORE_RE);
+      if (m && /^(yes|ja)$/i.test(label)) {
+        const key = `${m[1]}-${m[2]}`;
+        out.push({ ...base, selectionKey: key, selectionLabel: key.replace("-", "–") });
       }
       return;
     }

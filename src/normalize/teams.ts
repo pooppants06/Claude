@@ -109,8 +109,12 @@ export function classifyTeamSide(
 ): "HOME" | "AWAY" | "DRAW" | null {
   const k = teamKey(label);
   if (!k) return null;
-  if (/^(draw|tie|x|uavgjort|unentschieden)$/.test(label.trim().toLowerCase()))
-    return "DRAW";
+  const lower = label.trim().toLowerCase();
+  if (/^(draw|tie|x|uavgjort|unentschieden)$/.test(lower)) return "DRAW";
+  // A draw keyword anywhere in the label takes priority over a team name that
+  // also appears in it, e.g. Polymarket's "Draw (Argentina vs. Austria)" group
+  // title — otherwise the embedded "Argentina" would mis-resolve it to HOME.
+  if (/\b(draw|uavgjort|unentschieden)\b/.test(lower)) return "DRAW";
 
   const home = teamKey(teams.home);
   const away = teamKey(teams.away);

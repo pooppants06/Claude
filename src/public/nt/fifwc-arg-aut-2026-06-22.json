@@ -1,0 +1,17 @@
+{
+  "_source": "Norsk Tipping — Oddsen (https://www.norsk-tipping.no/sport/oddsen)",
+  "_captured": "2026-06-22, Argentina vs Østerrike (Fotball VM 2026), kickoff Mon 22/6 19:00",
+  "_note": "Real prices read from the Oddsen page (Argentina 1.45 / Uavgjort 4.20 / Østerrike 7.00). Only the Match Winner (1X2) market was captured; this is the market that overlaps Polymarket for value comparison.",
+  "markets": [
+    {
+      "type": "MATCH_WINNER",
+      "line": null,
+      "label": "Match Winner (1X2)",
+      "selections": [
+        { "key": "HOME", "label": "Argentina", "decimal": 1.45, "order": 0 },
+        { "key": "DRAW", "label": "Uavgjort",  "decimal": 4.20, "order": 1 },
+        { "key": "AWAY", "label": "Østerrike", "decimal": 7.00, "order": 2 }
+      ]
+    }
+  ]
+}
