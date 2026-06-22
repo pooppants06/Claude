@@ -75,9 +75,9 @@ export interface ComparisonSnapshot {
 
 const TYPE_ORDER: CanonicalMarketType[] = [
   "MATCH_WINNER", "DOUBLE_CHANCE", "DRAW_NO_BET", "TOTAL_GOALS", "BTTS",
-  "HT_RESULT", "FIRST_HALF_GOALS", "ODD_EVEN", "TEAM_TOTAL_HOME",
-  "TEAM_TOTAL_AWAY", "CORRECT_SCORE", "HT_FT", "ANYTIME_GOALSCORER",
-  "FIRST_GOALSCORER", "UNKNOWN",
+  "SPREAD", "HT_RESULT", "FIRST_HALF_GOALS", "ODD_EVEN", "TEAM_TOTAL_HOME",
+  "TEAM_TOTAL_AWAY", "FIRST_TEAM_TO_SCORE", "CORRECT_SCORE", "HT_FT",
+  "ANYTIME_GOALSCORER", "FIRST_GOALSCORER", "UNKNOWN",
 ];
 
 /**
@@ -88,7 +88,8 @@ const TYPE_ORDER: CanonicalMarketType[] = [
  */
 const COMPLETE_MARKETS = new Set<CanonicalMarketType>([
   "MATCH_WINNER", "DOUBLE_CHANCE", "DRAW_NO_BET", "BTTS", "TOTAL_GOALS",
-  "TEAM_TOTAL_HOME", "TEAM_TOTAL_AWAY", "ODD_EVEN", "HT_RESULT", "FIRST_HALF_GOALS",
+  "TEAM_TOTAL_HOME", "TEAM_TOTAL_AWAY", "SPREAD", "ODD_EVEN", "HT_RESULT",
+  "FIRST_HALF_GOALS", "FIRST_TEAM_TO_SCORE",
 ]);
 
 function toCompared(sel: Selection | undefined, source: SourceId): ComparedQuote | null {

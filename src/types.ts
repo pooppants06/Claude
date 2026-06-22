@@ -14,21 +14,30 @@ export type SourceId = "polymarket" | "norsktipping";
  * matching the same market across the two books.
  */
 export type CanonicalMarketType =
-  | "MATCH_WINNER" // Full-time 1X2 (Home / Draw / Away)
+  | "MATCH_WINNER" // 1X2 (Home / Draw / Away)
   | "DOUBLE_CHANCE" // 1X / 12 / X2
   | "DRAW_NO_BET" // Home or Away, stake back on draw
   | "BTTS" // Both teams to score (Yes / No)
   | "TOTAL_GOALS" // Over / Under a goal line
   | "TEAM_TOTAL_HOME" // Home team Over / Under
   | "TEAM_TOTAL_AWAY" // Away team Over / Under
+  | "SPREAD" // Goal handicap (home-team line; e.g. -1.5)
   | "ODD_EVEN" // Total goals odd or even
   | "CORRECT_SCORE" // Exact final score
-  | "HT_RESULT" // Half-time 1X2
+  | "HT_RESULT" // Half-time 1X2 (legacy; superseded by period="1H")
   | "HT_FT" // Half-time / Full-time combination
-  | "FIRST_HALF_GOALS" // Over / Under goals in first half
+  | "FIRST_HALF_GOALS" // Over / Under goals in first half (legacy)
+  | "FIRST_TEAM_TO_SCORE" // Which team scores first (Home / Away / Neither)
   | "ANYTIME_GOALSCORER" // A named player to score at any time
   | "FIRST_GOALSCORER" // A named player to score first
   | "UNKNOWN"; // Could not be classified; shown verbatim
+
+/**
+ * Match segment a market applies to. Undefined means the full match. Lets the
+ * same bet type (totals, BTTS, team totals, result) exist once per segment
+ * without colliding — Polymarket lists all three.
+ */
+export type Period = "1H" | "2H";
 
 /** A single price for one selection from one book. */
 export interface Quote {
@@ -55,11 +64,13 @@ export interface Selection {
 /** One bet type, holding all of its selections. */
 export interface Market {
   type: CanonicalMarketType;
-  /** Goal line for totals/handicaps (e.g. 2.5). undefined otherwise. */
+  /** Goal line for totals/handicaps (e.g. 2.5, or -1.5 for a spread). */
   line?: number;
+  /** Match segment; undefined = full match. */
+  period?: Period;
   /** Human label, e.g. "Total Goals — Over/Under 2.5". */
   label: string;
-  /** Stable de-duplication key, e.g. "TOTAL_GOALS@2.5". */
+  /** Stable de-duplication key, e.g. "TOTAL_GOALS@2.5" or "BTTS#1H". */
   key: string;
   selections: Selection[];
   /** Which books contributed at least one quote to this market. */

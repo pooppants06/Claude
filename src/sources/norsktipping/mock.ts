@@ -229,16 +229,16 @@ export function generateNorskTippingMarkets(meta: MatchMeta): Market[] {
     upsertQuote(m, { key: "UNDER", label: `Under ${l}`, order: 1 }, q(sim.under[l]! / N, 1.07));
     add(m);
   }
-  // First-half totals
+  // First-half totals (period-tagged so they line up with Polymarket's 1st-half totals)
   for (const l of FH_LINES) {
-    const m = emptyMarket("FIRST_HALF_GOALS", l);
+    const m = emptyMarket("TOTAL_GOALS", l, undefined, "1H");
     upsertQuote(m, { key: "OVER", label: `Over ${l}`, order: 0 }, q(sim.fhOver[l]! / N, 1.08));
     upsertQuote(m, { key: "UNDER", label: `Under ${l}`, order: 1 }, q(sim.fhUnder[l]! / N, 1.08));
     add(m);
   }
-  // Half-time result
+  // First-half result (1X2 for the 1st half)
   {
-    const m = emptyMarket("HT_RESULT");
+    const m = emptyMarket("MATCH_WINNER", undefined, undefined, "1H");
     upsertQuote(m, sideSel("HOME"), q(sim.htHome / N, 1.08));
     upsertQuote(m, sideSel("DRAW"), q(sim.htDraw / N, 1.08));
     upsertQuote(m, sideSel("AWAY"), q(sim.htAway / N, 1.08));

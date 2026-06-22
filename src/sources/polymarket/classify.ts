@@ -8,7 +8,7 @@
  * Each emitted entry is one canonical selection with its own CLOB token id.
  */
 
-import type { CanonicalMarketType, TeamInfo } from "../../types.js";
+import type { CanonicalMarketType, Period, TeamInfo } from "../../types.js";
 import { classifyTeamSide } from "../../normalize/teams.js";
 
 export interface RawPolymarketMarket {
@@ -27,6 +27,7 @@ export interface RawPolymarketMarket {
 export interface ClassifiedSelection {
   type: CanonicalMarketType;
   line?: number;
+  period?: Period;
   selectionKey: string;
   selectionLabel: string;
   order?: number;
@@ -54,11 +55,27 @@ function toNum(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Pull a goal line out of a totals subject. Prefers the "O/U N" or
+ * "Over/Under N" number so it isn't fooled by ordinals like "1st Half".
+ */
 function extractLine(text: string, raw: RawPolymarketMarket): number | undefined {
   const fromField = toNum(raw.line);
   if (fromField != null) return fromField;
-  const m = text.match(/(\d+(?:\.\d+)?)/);
-  return m ? Number(m[1]) : undefined;
+  const m =
+    text.match(/o\/u\s*(\d+(?:\.\d+)?)/i) ||
+    text.match(/(?:over|under)\s*(\d+(?:\.\d+)?)/i);
+  if (m) return Number(m[1]);
+  const nums = text.match(/\d+(?:\.\d+)?/g);
+  return nums ? Number(nums[nums.length - 1]) : undefined;
+}
+
+/** Which half (if any) a market applies to, from its subject text. */
+function detectPeriod(text: string): Period | undefined {
+  const t = text.toLowerCase();
+  if (/\b(2nd half|second half|andre omgang)\b/.test(t)) return "2H";
+  if (/\b(1st half|first half|half.?time|førsteomgang)\b/.test(t)) return "1H";
+  return undefined;
 }
 
 const SCORE_RE = /(\d+)\s*[-–:]\s*(\d+)/;
@@ -92,30 +109,31 @@ function detectType(
   if (/correct score|exact score|riktig resultat/.test(t) || outcomes.some((o) => SCORE_RE.test(o)))
     return "CORRECT_SCORE";
   if (/(odd|even|partall|oddetall)/.test(t)) return "ODD_EVEN";
+  if (/first team to score|team to score first|to score first|score first/.test(t))
+    return "FIRST_TEAM_TO_SCORE";
   if (/(first|1st).*goalscorer|first.*to score/.test(t)) return "FIRST_GOALSCORER";
   if (/(anytime|to score).*goal|goalscorer|målscorer|to score/.test(t) && !sides.length)
     return "ANYTIME_GOALSCORER";
 
-  const isHalf = /(half.?time|1st half|first half|førsteomgang|pause)/.test(t);
-  const isTotal = /(total|over|under|goals)/.test(t) || outcomes.some((o) => /over|under/i.test(o));
+  // Half / second-half variants are distinguished by `period`, not a type.
+  const isTotal =
+    /(total|over|under|o\/u|goals)/.test(t) || outcomes.some((o) => /over|under/i.test(o));
 
   if (isTotal) {
-    if (isHalf) return "FIRST_HALF_GOALS";
-    // Team-specific totals (subject names one of the teams + "total/goals").
-    if (classifyTeamSide(text, teams) === "HOME") return "TEAM_TOTAL_HOME";
-    if (classifyTeamSide(text, teams) === "AWAY") return "TEAM_TOTAL_AWAY";
+    // Team-specific totals are named in the *group title* (e.g. "Argentina O/U
+    // 1.5"). We must not look at the full question, which is always
+    // "<Home> vs. <Away>: ..." and so always contains both team names.
+    if (giSide === "HOME") return "TEAM_TOTAL_HOME";
+    if (giSide === "AWAY") return "TEAM_TOTAL_AWAY";
     return "TOTAL_GOALS";
   }
 
-  if (isHalf && sides.length) return "HT_RESULT";
-
-  // Moneyline / match winner: either a multi-outcome market whose outcomes are
-  // team sides, an explicit winner keyword, or a grouped binary "<team/draw> to
-  // win" sub-market (subject in groupItemTitle resolves to a side).
-  if (sides.length >= 2 || /moneyline|match winner|1x2|winner|kampvinner/.test(t)) {
+  // Match result: a multi-outcome team market, an explicit winner/leading
+  // keyword, or a grouped binary "<side> to win / leading" sub-market.
+  if (sides.length >= 2 || /moneyline|match winner|1x2|winner|kampvinner|leading/.test(t)) {
     return "MATCH_WINNER";
   }
-  if (binary && giSide && !isTotal && !isHalf) return "MATCH_WINNER";
+  if (binary && giSide && !isTotal) return "MATCH_WINNER";
   return "UNKNOWN";
 }
 
@@ -143,6 +161,48 @@ function sideToSelection(
 }
 
 /**
+ * Goal handicap. Polymarket lists these as group titles like "Argentina (-1.5)"
+ * with two team outcomes. We express the line from the home team's perspective
+ * (so "Austria (-1.5)" → home +1.5) to give each handicap a distinct key.
+ */
+function classifySpread(
+  raw: RawPolymarketMarket,
+  gi: string,
+  outcomes: string[],
+  prices: (number | null)[],
+  tokens: string[],
+  teams: TeamInfo,
+  period: Period | undefined,
+): ClassifiedSelection[] | null {
+  const m = gi.match(/^(.+?)\s*\(\s*([+-]?\d+(?:\.\d+)?)\s*\)\s*$/);
+  if (!m || outcomes.length !== 2) return null;
+  const favSide = classifyTeamSide(m[1]!, teams);
+  if (favSide !== "HOME" && favSide !== "AWAY") return null;
+  const mag = Math.abs(Number(m[2]));
+  if (!Number.isFinite(mag) || mag === 0) return null;
+  void raw;
+  const homeLine = favSide === "HOME" ? -mag : mag;
+  const out: ClassifiedSelection[] = [];
+  outcomes.forEach((label, i) => {
+    const side = classifyTeamSide(label, teams);
+    if (side !== "HOME" && side !== "AWAY") return;
+    const teamLine = side === "HOME" ? homeLine : -homeLine;
+    const name = side === "HOME" ? teams.home : teams.away;
+    out.push({
+      type: "SPREAD",
+      line: homeLine,
+      period,
+      selectionKey: side,
+      selectionLabel: `${name} ${teamLine > 0 ? "+" : ""}${teamLine}`,
+      order: side === "HOME" ? 0 : 1,
+      prob: prices[i] ?? null,
+      tokenId: tokens[i],
+    });
+  });
+  return out.length === 2 ? out : null;
+}
+
+/**
  * Turn one raw Gamma market into zero or more canonical selections.
  */
 export function classifyPolymarketMarket(
@@ -161,13 +221,23 @@ export function classifyPolymarketMarket(
   // The clean subject for grouped binary markets lives in groupItemTitle.
   const gi = (raw.groupItemTitle ?? "").trim();
   const giSide = gi ? classifyTeamSide(gi, teams) : null;
+  const period = detectPeriod(text);
+
+  // Goal handicap — group title like "Argentina (-1.5)". Keep it off the
+  // moneyline path (its two team outcomes would otherwise look like a 1X2).
+  const spread = classifySpread(raw, gi, outcomes, prices, tokens, teams, period);
+  if (spread) return spread;
+
   const type = detectType(text, outcomes, teams, giSide, isBinaryYesNo);
   const line =
-    type === "TOTAL_GOALS" ||
-    type === "FIRST_HALF_GOALS" ||
-    type === "TEAM_TOTAL_HOME" ||
-    type === "TEAM_TOTAL_AWAY"
+    type === "TOTAL_GOALS" || type === "TEAM_TOTAL_HOME" || type === "TEAM_TOTAL_AWAY"
       ? extractLine(subject || outcomes.join(" "), raw)
+      : undefined;
+  // Period only applies to segment-able markets; other types stay full-match.
+  const segP: Period | undefined =
+    type === "TOTAL_GOALS" || type === "TEAM_TOTAL_HOME" || type === "TEAM_TOTAL_AWAY" ||
+    type === "BTTS" || type === "MATCH_WINNER"
+      ? period
       : undefined;
 
   const out: ClassifiedSelection[] = [];
@@ -175,7 +245,7 @@ export function classifyPolymarketMarket(
   outcomes.forEach((label, i) => {
     const prob = prices[i] ?? null;
     const tokenId = tokens[i];
-    const base = { type, line, prob, tokenId };
+    const base = { type, line, period: segP, prob, tokenId };
 
     // Binary "team to win" sub-market: only the Yes leg is a clean 1X2 pick.
     if (isBinaryYesNo && type === "MATCH_WINNER") {
@@ -188,12 +258,30 @@ export function classifyPolymarketMarket(
     }
 
     // Binary "exact score" sub-market: the score lives in the subject/group
-    // title (e.g. "Argentina 1 - 0 Austria"); keep only the Yes leg.
+    // title (e.g. "Argentina 1 - 0 Austria"); keep only the Yes leg. The
+    // "Any Other Score" residual has no digits — bucket it under OTHER.
     if (isBinaryYesNo && type === "CORRECT_SCORE") {
-      const m = subject.match(SCORE_RE);
-      if (m && /^(yes|ja)$/i.test(label)) {
-        const key = `${m[1]}-${m[2]}`;
-        out.push({ ...base, selectionKey: key, selectionLabel: key.replace("-", "–") });
+      if (/^(yes|ja)$/i.test(label)) {
+        const m = subject.match(SCORE_RE);
+        if (m) {
+          const key = `${m[1]}-${m[2]}`;
+          out.push({ ...base, selectionKey: key, selectionLabel: key.replace("-", "–"), order: 50 });
+        } else if (/any other|other score/i.test(subject)) {
+          out.push({ ...base, selectionKey: "OTHER", selectionLabel: "Any other score", order: 99 });
+        }
+      }
+      return;
+    }
+
+    // Binary "first team to score" sub-market: keep the Yes leg, keyed by the
+    // side named in the group title ("Argentina"/"Austria"/"Neither").
+    if (isBinaryYesNo && type === "FIRST_TEAM_TO_SCORE") {
+      if (/^(yes|ja)$/i.test(label)) {
+        const sel =
+          giSide === "HOME" ? { key: "HOME", label: teams.home, order: 0 }
+          : giSide === "AWAY" ? { key: "AWAY", label: teams.away, order: 2 }
+          : { key: "NEITHER", label: "Neither", order: 1 };
+        out.push({ ...base, selectionKey: sel.key, selectionLabel: sel.label, order: sel.order });
       }
       return;
     }
@@ -234,6 +322,13 @@ export function classifyPolymarketMarket(
           ou === "OVER"
             ? { key: "OVER", label: `Over ${line ?? ""}`.trim(), order: 0 }
             : { key: "UNDER", label: `Under ${line ?? ""}`.trim(), order: 1 };
+        break;
+      }
+      case "FIRST_TEAM_TO_SCORE": {
+        const side = classifyTeamSide(label, teams);
+        if (side === "HOME") sel = { key: "HOME", label: teams.home, order: 0 };
+        else if (side === "AWAY") sel = { key: "AWAY", label: teams.away, order: 2 };
+        else sel = { key: "NEITHER", label: "Neither", order: 1 };
         break;
       }
       case "CORRECT_SCORE": {

@@ -23,11 +23,15 @@ export type PolymarketProvider = "gamma" | "demo";
 // discover the sibling events (exact score, totals, …). Refine via env once we
 // see the real slugs in the logs / debug endpoint.
 const DEFAULT_RELATED_SUFFIXES = [
+  // Polymarket packs spreads, totals, team totals, BTTS and the half markets
+  // into one "-more-markets" sibling event; the rest are their own events.
+  "-more-markets",
   "-exact-score", "-correct-score", "-total-goals", "-total", "-over-under",
   "-both-teams-to-score", "-btts", "-double-chance", "-draw-no-bet",
-  "-half-time-result", "-half-time", "-halftime", "-first-half", "-1st-half",
-  "-odd-even", "-clean-sheet", "-to-score", "-anytime-goalscorer",
-  "-first-goalscorer", "-player-to-score",
+  "-halftime-result", "-half-time-result", "-second-half-result",
+  "-half-time", "-halftime", "-first-half", "-1st-half", "-2nd-half",
+  "-odd-even", "-clean-sheet", "-to-score", "-first-to-score",
+  "-anytime-goalscorer", "-first-goalscorer", "-player-to-score",
 ].join(",");
 
 export const config = {

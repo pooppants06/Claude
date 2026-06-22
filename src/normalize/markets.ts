@@ -2,7 +2,7 @@
  * Odds math + canonical market/selection helpers shared by every adapter.
  */
 
-import type { CanonicalMarketType, Market, Quote, SourceId } from "../types.js";
+import type { CanonicalMarketType, Market, Period, Quote, SourceId } from "../types.js";
 
 /** Clamp a probability into (0,1) so we never divide by zero. */
 export function clampProb(p: number): number {
@@ -44,9 +44,10 @@ export function makeQuote(
   };
 }
 
-/** Build the stable de-dup key for a market. */
-export function marketKey(type: CanonicalMarketType, line?: number): string {
-  return line == null ? type : `${type}@${line}`;
+/** Build the stable de-dup key for a market (type, optional line, optional period). */
+export function marketKey(type: CanonicalMarketType, line?: number, period?: Period): string {
+  const base = line == null ? type : `${type}@${line}`;
+  return period ? `${base}#${period}` : base;
 }
 
 const TYPE_LABELS: Record<CanonicalMarketType, string> = {
@@ -57,28 +58,45 @@ const TYPE_LABELS: Record<CanonicalMarketType, string> = {
   TOTAL_GOALS: "Total Goals",
   TEAM_TOTAL_HOME: "Home Team Total Goals",
   TEAM_TOTAL_AWAY: "Away Team Total Goals",
+  SPREAD: "Goal Handicap",
   ODD_EVEN: "Total Goals Odd/Even",
   CORRECT_SCORE: "Correct Score",
   HT_RESULT: "Half-Time Result (1X2)",
   HT_FT: "Half-Time / Full-Time",
   FIRST_HALF_GOALS: "First Half Total Goals",
+  FIRST_TEAM_TO_SCORE: "First Team To Score",
   ANYTIME_GOALSCORER: "Anytime Goalscorer",
   FIRST_GOALSCORER: "First Goalscorer",
   UNKNOWN: "Other",
 };
 
-export function defaultMarketLabel(type: CanonicalMarketType, line?: number): string {
-  const base = TYPE_LABELS[type];
-  return line == null ? base : `${base} — Over/Under ${line}`;
+const PERIOD_LABELS: Record<Period, string> = { "1H": "1st Half", "2H": "2nd Half" };
+
+export function defaultMarketLabel(
+  type: CanonicalMarketType,
+  line?: number,
+  period?: Period,
+): string {
+  let base = TYPE_LABELS[type];
+  if (line != null) {
+    base += type === "SPREAD" ? ` ${line > 0 ? "+" : ""}${line}` : ` — Over/Under ${line}`;
+  }
+  return period ? `${base} (${PERIOD_LABELS[period]})` : base;
 }
 
 /** A new, empty canonical market. */
-export function emptyMarket(type: CanonicalMarketType, line?: number, label?: string): Market {
+export function emptyMarket(
+  type: CanonicalMarketType,
+  line?: number,
+  label?: string,
+  period?: Period,
+): Market {
   return {
     type,
     line,
-    key: marketKey(type, line),
-    label: label ?? defaultMarketLabel(type, line),
+    period,
+    key: marketKey(type, line, period),
+    label: label ?? defaultMarketLabel(type, line, period),
     selections: [],
     sources: [],
   };

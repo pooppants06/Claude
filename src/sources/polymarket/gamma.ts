@@ -6,7 +6,7 @@
 
 import { config } from "../../config.js";
 import type { MatchMeta, Market, TeamInfo } from "../../types.js";
-import { emptyMarket, makeQuote, upsertQuote } from "../../normalize/markets.js";
+import { emptyMarket, makeQuote, marketKey, upsertQuote } from "../../normalize/markets.js";
 import { codeToName, parseSlug, teamKey } from "../../normalize/teams.js";
 import {
   classifyPolymarketMarket,
@@ -243,9 +243,9 @@ export function buildPolymarketMarkets(
       unclassified.push(rm.question ?? rm.groupItemTitle ?? "(unnamed market)");
     }
     for (const c of classified) {
-      let market = byKey.get(`${c.type}${c.line == null ? "" : `@${c.line}`}`);
+      let market = byKey.get(marketKey(c.type, c.line, c.period));
       if (!market) {
-        market = emptyMarket(c.type, c.line);
+        market = emptyMarket(c.type, c.line, undefined, c.period);
         byKey.set(market.key, market);
       }
       const quote = makeQuote("polymarket", {

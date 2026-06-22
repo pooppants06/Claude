@@ -45,7 +45,7 @@ export function generatePolymarketDemo(meta: MatchMeta): Market[] {
 
   for (const m of ntBook) {
     if (!PM_SOCCER_TYPES.has(m.type)) continue;
-    const pm = emptyMarket(m.type, m.line, m.label);
+    const pm = emptyMarket(m.type, m.line, m.label, m.period);
     for (const s of m.selections) {
       const ntProb = s.quotes.norsktipping?.impliedProb;
       if (ntProb == null) continue;
