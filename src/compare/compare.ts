@@ -46,6 +46,8 @@ export interface ComparedMarket {
   line?: number;
   period?: Period;
   label: string;
+  /** True when selections cover the whole outcome space (de-vig/edge is valid). */
+  complete: boolean;
   sources: SourceId[];
   sourceCount: number;
   maxSpreadPct: number | null;
@@ -190,7 +192,7 @@ function mergeOne(key: string, bySource: Map<SourceId, Market>): ComparedMarket 
   const sources = [...bySource.keys()];
   return {
     type: ref.type, key, line: ref.line, period: ref.period, label: ref.label,
-    sources, sourceCount: sources.length,
+    complete, sources, sourceCount: sources.length,
     maxSpreadPct, bestEdgePct, bestSource, selections,
   };
 }
