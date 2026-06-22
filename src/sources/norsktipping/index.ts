@@ -10,6 +10,7 @@ import { config } from "../../config.js";
 import type { Market, MatchMeta } from "../../types.js";
 import { generateNorskTippingMarkets } from "./mock.js";
 import { fetchNorskTippingHttp } from "./orako.js";
+import { fetchNorskTippingOddsen } from "./oddsen.js";
 
 export type NtStatus = "idle" | "live" | "mock" | "fallback-mock" | "error";
 
@@ -29,14 +30,17 @@ export class NorskTippingSource extends EventEmitter {
 
   private async refresh(): Promise<void> {
     if (!this.meta) return;
-    if (config.norskTipping.provider === "http") {
+    const provider = config.norskTipping.provider;
+    if (provider === "oddsen" || provider === "http") {
       try {
-        this.markets = await fetchNorskTippingHttp(this.meta);
+        this.markets = provider === "oddsen"
+          ? await fetchNorskTippingOddsen(this.meta)
+          : await fetchNorskTippingHttp(this.meta);
         this.setStatus("live");
         this.emit("update");
         return;
       } catch (err) {
-        console.warn(`[norsktipping] http provider failed, using mock: ${(err as Error).message}`);
+        console.warn(`[norsktipping] ${provider} provider failed, using mock: ${(err as Error).message}`);
         this.markets = generateNorskTippingMarkets(this.meta);
         this.setStatus("fallback-mock");
         this.emit("update");

@@ -107,6 +107,8 @@ function feedLabel(s) {
     "fallback-mock": "live failed → mock",
     live: "live",
     demo: "demo (offline)",
+    disabled: "off (no API key)",
+    "no-match": "no match found",
     connecting: "connecting…",
     disconnected: "reconnecting…",
     idle: "—",
@@ -114,9 +116,21 @@ function feedLabel(s) {
   }[s] || s;
 }
 
+// Source metadata, including the column order.
+const SOURCES = {
+  polymarket: { name: "Polymarket", col: "Polymarket", cls: "pm" },
+  norsktipping: { name: "Norsk Tipping", col: "Norsk Tipping", cls: "nt" },
+  oddsapi: { name: "Best book", col: "Best book (Odds API)", cls: "oa" },
+};
+const SOURCE_ORDER = ["polymarket", "norsktipping", "oddsapi"];
+let activeSources = ["polymarket", "norsktipping"];
+
 function render(snap) {
   placeholder.classList.add("hidden");
   results.classList.remove("hidden");
+
+  activeSources = SOURCE_ORDER.filter((s) => (snap.sources || []).includes(s));
+  if (!activeSources.length) activeSources = ["polymarket", "norsktipping"];
 
   const m = snap.match;
   $("matchTitle").textContent = `${m.teams.home} vs ${m.teams.away}`;
@@ -126,17 +140,19 @@ function render(snap) {
   bits.push(`slug: ${m.slug}`);
   $("matchSub").innerHTML = bits.join(" · ") + ` · <a href="${m.polymarketUrl}" target="_blank" rel="noopener">open on Polymarket ↗</a>`;
 
-  $("pmStatus").textContent = feedLabel(snap.status.polymarket);
-  $("ntStatus").textContent = feedLabel(snap.status.norsktipping);
-  $("pmDot").className = "dot pm " + (/live|demo/.test(snap.status.polymarket) ? "on" : "");
-  $("ntDot").className = "dot nt " + (/live|mock/.test(snap.status.norsktipping) ? "on" : "");
-  $("updated").textContent = "updated " + new Date(snap.generatedAt).toLocaleTimeString();
+  // Per-source status line.
+  $("feeds").innerHTML = SOURCE_ORDER.map((src) => {
+    const st = snap.status[src];
+    if (st == null) return "";
+    const on = /live|demo|mock/.test(st) ? "on" : "";
+    return `<div class="feed"><span class="dot ${SOURCES[src].cls} ${on}"></span> ${SOURCES[src].name}: <b>${feedLabel(st)}</b></div>`;
+  }).join("") + `<div class="feed muted">updated ${new Date(snap.generatedAt).toLocaleTimeString()}</div>`;
 
+  const cov = snap.coverage || {};
   $("summary").innerHTML = `
-    ${stat(snap.counts.both, "markets on both books")}
-    ${stat(snap.counts.polymarketOnly, "Polymarket only")}
-    ${stat(snap.counts.norsktippingOnly, "Norsk Tipping only")}
-    ${stat(snap.markets.length, "markets total")}`;
+    ${stat(snap.counts.total, "markets total")}
+    ${stat(snap.counts.multi, "on 2+ books")}
+    ${activeSources.map((s) => stat(cov[s] ?? 0, `${SOURCES[s].name} markets`)).join("")}`;
 
   $("marketCount").textContent = `(${snap.markets.length})`;
   renderHighlights(snap.highlights);
@@ -148,20 +164,22 @@ const stat = (n, l) => `<div class="stat"><div class="n">${n}</div><div class="l
 function renderHighlights(highlights) {
   const el = $("highlights");
   if (!highlights.length) {
-    el.innerHTML = `<p class="muted">No markets are offered by both books for this match yet.</p>`;
+    el.innerHTML = `<p class="muted">No markets are offered by 2+ books for this match yet.</p>`;
     return;
   }
   el.innerHTML = highlights
     .map((h) => {
-      const cls = h.valueSource === "polymarket" ? "pm" : "nt";
-      const name = h.valueSource === "polymarket" ? "Polymarket" : "Norsk Tipping";
+      const best = SOURCES[h.bestSource];
+      const rows = activeSources
+        .filter((src) => h.prices[src] != null)
+        .map((src) => `<div class="row"><span class="src ${SOURCES[src].cls}">${SOURCES[src].name}</span><b>${fmt(h.prices[src])}</b></div>`)
+        .join("");
       return `<div class="hl">
-        <div class="diff ${heatClass(h.oddsDiffPct)}">${h.oddsDiffPct.toFixed(1)}%</div>
+        <div class="diff ${heatClass(h.spreadPct)}">${h.spreadPct.toFixed(1)}%</div>
         <div class="mkt">${escape(h.marketLabel)}</div>
         <div class="sel">${escape(h.selectionLabel)}</div>
-        <div class="row"><span class="src pm">Polymarket</span><b>${fmt(h.polymarket)}</b></div>
-        <div class="row"><span class="src nt">Norsk Tipping</span><b>${fmt(h.norsktipping)}</b></div>
-        <span class="pill value ${cls}">Best on ${name}</span>
+        ${rows}
+        <span class="pill value ${best.cls}">Best on ${best.name}</span>
       </div>`;
     })
     .join("");
@@ -169,12 +187,11 @@ function renderHighlights(highlights) {
 
 function renderMarkets(markets) {
   $("markets").innerHTML = markets.map(renderMarket).join("");
-  // Flash any cell whose decimal changed since last render.
   for (const [id, val] of pendingFlash) {
     const cell = document.querySelector(`[data-cell="${id.replace(/(["\\])/g, "\\$1")}"]`);
     if (cell) {
       cell.classList.remove("flash");
-      void cell.offsetWidth; // restart animation
+      void cell.offsetWidth;
       cell.classList.add("flash");
     }
     prevValues.set(id, val);
@@ -186,10 +203,11 @@ const pendingFlash = new Map();
 
 function renderMarket(m) {
   const tags = [];
-  if (m.hasBoth) tags.push(`<span class="tag both">both books</span>`);
-  else tags.push(`<span class="tag one">${m.sources[0] === "polymarket" ? "Polymarket only" : "Norsk Tipping only"}</span>`);
-  if (m.maxOddsDiffPct != null) tags.push(`<span class="tag maxdiff">max diff ${m.maxOddsDiffPct.toFixed(1)}%</span>`);
+  if (m.sourceCount >= 2) tags.push(`<span class="tag both">${m.sourceCount} books</span>`);
+  else tags.push(`<span class="tag one">${SOURCES[m.sources[0]]?.name ?? m.sources[0]} only</span>`);
+  if (m.maxSpreadPct != null) tags.push(`<span class="tag maxdiff">max diff ${m.maxSpreadPct.toFixed(1)}%</span>`);
 
+  const heads = activeSources.map((s) => `<th>${SOURCES[s].col}</th>`).join("");
   const rows = m.selections.map((s) => renderRow(m, s)).join("");
   return `<div class="market">
     <header>
@@ -197,41 +215,37 @@ function renderMarket(m) {
       <span class="tags">${tags.join("")}</span>
     </header>
     <table>
-      <thead><tr><th>Selection</th><th>Polymarket</th><th>Norsk Tipping</th><th>Diff</th><th>Value</th></tr></thead>
+      <thead><tr><th>Selection</th>${heads}<th>Diff</th><th>Best</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   </div>`;
 }
 
 function renderRow(m, s) {
-  const pmId = `${m.key}|${s.key}|pm`;
-  const ntId = `${m.key}|${s.key}|nt`;
-  flagFlash(pmId, s.polymarket?.decimal);
-  flagFlash(ntId, s.norsktipping?.decimal);
-
-  const pmCell = oddsCell(s.polymarket, "col-pm", pmId);
-  const ntCell = oddsCell(s.norsktipping, "col-nt", ntId);
+  const cells = activeSources
+    .map((src) => {
+      const id = `${m.key}|${s.key}|${src}`;
+      flagFlash(id, s.quotes[src]?.decimal);
+      return oddsCell(s.quotes[src], SOURCES[src].cls, id, s.bestSource === src && s.sourceCount >= 2);
+    })
+    .join("");
 
   let diff = `<td class="diffcell heat0">—</td>`;
-  let value = `<td><span class="value flat">—</span></td>`;
-  if (s.hasBoth) {
-    diff = `<td class="diffcell ${heatClass(s.oddsDiffPct)}">${s.oddsDiffPct.toFixed(1)}%</td>`;
-    const cls = s.valueSource === "polymarket" ? "pm" : "nt";
-    const name = s.valueSource === "polymarket" ? "Polymarket" : "Norsk Tipping";
+  let best = `<td><span class="value flat">${s.sourceCount === 1 ? (SOURCES[Object.keys(s.quotes)[0]]?.name ?? "—") + " only" : "—"}</span></td>`;
+  if (s.sourceCount >= 2 && s.spreadPct != null) {
+    diff = `<td class="diffcell ${heatClass(s.spreadPct)}">${s.spreadPct.toFixed(1)}%</td>`;
+    const b = SOURCES[s.bestSource];
     const edge = s.edgePct != null ? ` ${pct(s.edgePct)}` : "";
-    value = `<td><span class="value ${cls}">${name}${edge}</span></td>`;
-  } else {
-    const only = s.polymarket ? "PM only" : s.norsktipping ? "NT only" : "—";
-    value = `<td><span class="value flat">${only}</span></td>`;
+    best = `<td><span class="value ${b.cls}">${b.name}${edge}</span></td>`;
   }
-
-  return `<tr><td>${escape(s.label)}</td>${pmCell}${ntCell}${diff}${value}</tr>`;
+  return `<tr><td>${escape(s.label)}</td>${cells}${diff}${best}</tr>`;
 }
 
-function oddsCell(q, cls, cellId) {
+function oddsCell(q, cls, cellId, isBest) {
   if (!q || q.decimal == null) return `<td class="odds empty" data-cell="${cellId}">—</td>`;
   const prob = q.impliedProb != null ? `<small>${(q.impliedProb * 100).toFixed(1)}%</small>` : "";
-  return `<td class="odds ${cls}" data-cell="${cellId}">${fmt(q.decimal)}${prob}</td>`;
+  const book = q.meta && q.meta.book ? ` title="${escape(String(q.meta.book))}${q.meta.books ? ` · ${q.meta.books} books` : ""}"` : "";
+  return `<td class="odds ${cls}${isBest ? " best" : ""}" data-cell="${cellId}"${book}>${fmt(q.decimal)}${prob}</td>`;
 }
 
 function flagFlash(id, decimal) {

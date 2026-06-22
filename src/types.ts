@@ -7,7 +7,7 @@
  * pickable outcome within it (e.g. Home, Over, "2-1").
  */
 
-export type SourceId = "polymarket" | "norsktipping";
+export type SourceId = "polymarket" | "norsktipping" | "oddsapi";
 
 /**
  * Canonical bet-type identifiers. The string values are stable keys used for
@@ -68,6 +68,9 @@ export interface Market {
   line?: number;
   /** Match segment; undefined = full match. */
   period?: Period;
+  /** Free-form discriminator for source-specific markets that have no canonical
+   *  type (e.g. Norsk Tipping corners/cards) so they keep distinct keys. */
+  variant?: string;
   /** Human label, e.g. "Total Goals — Over/Under 2.5". */
   label: string;
   /** Stable de-duplication key, e.g. "TOTAL_GOALS@2.5" or "BTTS#1H". */

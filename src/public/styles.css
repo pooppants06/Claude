@@ -7,6 +7,7 @@
   --muted: #8a97a8;
   --pm: #6f7bff; /* Polymarket */
   --nt: #19c37d; /* Norsk Tipping */
+  --oa: #e0a44a; /* The Odds API */
   --warn: #f0b429;
   --hot: #ff6b6b;
   --radius: 12px;
@@ -37,6 +38,7 @@ body {
 .brand p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
 .src.pm { color: var(--pm); font-weight: 600; }
 .src.nt { color: var(--nt); font-weight: 600; }
+.src.oa { color: var(--oa); font-weight: 600; }
 
 .conn {
   font-size: 12px; padding: 5px 12px; border-radius: 999px;
@@ -87,6 +89,7 @@ main { max-width: 1100px; margin: 18px auto 80px; padding: 0 24px; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; background: var(--muted); }
 .dot.pm.on { background: var(--pm); box-shadow: 0 0 8px var(--pm); }
 .dot.nt.on { background: var(--nt); box-shadow: 0 0 8px var(--nt); }
+.dot.oa.on { background: var(--oa); box-shadow: 0 0 8px var(--oa); }
 
 .summary { display: flex; gap: 12px; margin: 18px 0; flex-wrap: wrap; }
 .stat {
@@ -134,6 +137,9 @@ tbody tr:hover { background: rgba(255,255,255,0.02); }
 .odds small { display: block; font-weight: 400; font-size: 11px; color: var(--muted); }
 .odds.col-pm { color: var(--pm); }
 .odds.col-nt { color: var(--nt); }
+.odds.col-oa { color: var(--oa); }
+.odds.best { font-weight: 700; }
+.odds.best::after { content: " ★"; font-size: 10px; opacity: 0.8; }
 .odds.empty { color: var(--muted); font-weight: 400; }
 .diffcell { font-weight: 700; }
 .value {
@@ -141,6 +147,7 @@ tbody tr:hover { background: rgba(255,255,255,0.02); }
 }
 .value.pm { background: rgba(111,123,255,0.14); color: var(--pm); }
 .value.nt { background: rgba(25,195,125,0.14); color: var(--nt); }
+.value.oa { background: rgba(224,164,74,0.16); color: var(--oa); }
 .value.flat { color: var(--muted); }
 
 /* heat scale for diff */

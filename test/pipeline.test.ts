@@ -133,22 +133,29 @@ test("compareMarkets merges both books and ranks by biggest difference", () => {
   ];
   const { markets: pmMarkets } = buildPolymarketMarkets(pmRaw, teams);
   const ntMarkets = generateNorskTippingMarkets(meta);
-  const snap = compareMarkets(meta, pmMarkets, ntMarkets, { polymarket: "live", norsktipping: "mock" });
+  const snap = compareMarkets(
+    meta,
+    [
+      { source: "polymarket", markets: pmMarkets, status: "live" },
+      { source: "norsktipping", markets: ntMarkets, status: "mock" },
+    ],
+    { polymarket: "live", norsktipping: "mock" },
+  );
 
   const mw = snap.markets.find((m) => m.type === "MATCH_WINNER")!;
-  assert.equal(mw.hasBoth, true);
+  assert.ok(mw.sourceCount >= 2);
   for (const s of mw.selections) {
-    assert.ok(s.polymarket && s.norsktipping, `both quotes expected for ${s.key}`);
-    assert.ok(s.oddsDiffPct != null && s.valueSource);
+    assert.ok(s.quotes.polymarket && s.quotes.norsktipping, `both quotes expected for ${s.key}`);
+    assert.ok(s.spreadPct != null && s.bestSource);
   }
-  // Highlights are sorted by descending difference.
+  // Highlights are sorted by descending spread.
   for (let i = 1; i < snap.highlights.length; i++) {
-    assert.ok(snap.highlights[i - 1]!.oddsDiffPct >= snap.highlights[i]!.oddsDiffPct);
+    assert.ok(snap.highlights[i - 1]!.spreadPct >= snap.highlights[i]!.spreadPct);
   }
-  // Both-book markets must sort ahead of single-book ones.
-  const firstSingle = snap.markets.findIndex((m) => !m.hasBoth);
-  const lastBoth = snap.markets.map((m) => m.hasBoth).lastIndexOf(true);
-  if (firstSingle !== -1) assert.ok(lastBoth < firstSingle);
+  // Multi-book markets must sort ahead of single-book ones.
+  const firstSingle = snap.markets.findIndex((m) => m.sourceCount < 2);
+  const lastMulti = snap.markets.map((m) => m.sourceCount >= 2).lastIndexOf(true);
+  if (firstSingle !== -1) assert.ok(lastMulti < firstSingle);
 });
 
 test("matchCore + sameMatch group a match's sibling events but exclude others", () => {

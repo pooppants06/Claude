@@ -9,11 +9,13 @@ import { config } from "./config.js";
 import type { MatchMeta } from "./types.js";
 import { PolymarketSource } from "./sources/polymarket/index.js";
 import { NorskTippingSource } from "./sources/norsktipping/index.js";
+import { OddsApiSource } from "./sources/oddsapi/index.js";
 import { compareMarkets, type ComparisonSnapshot } from "./compare/compare.js";
 
 export class Tracker extends EventEmitter {
   readonly pm = new PolymarketSource();
   readonly nt = new NorskTippingSource();
+  readonly oa = new OddsApiSource();
   private meta: MatchMeta | null = null;
   private dirty = true;
   private flushTimer: NodeJS.Timeout | null = null;
@@ -30,9 +32,13 @@ export class Tracker extends EventEmitter {
     });
     this.nt.on("update", markDirty);
     this.nt.on("status", markDirty);
+    this.oa.on("update", markDirty);
+    this.oa.on("status", markDirty);
 
     this.meta = await this.pm.load(url); // throws on bad URL / network
-    await this.nt.load(this.meta);
+    // Norsk Tipping and The Odds API load in parallel; failures degrade
+    // gracefully (each source reports its own status) and never block.
+    await Promise.allSettled([this.nt.load(this.meta), this.oa.load(this.meta)]);
 
     this.flushTimer = setInterval(() => this.flush(), config.snapshotIntervalMs);
     return this.snapshot();
@@ -46,10 +52,19 @@ export class Tracker extends EventEmitter {
 
   snapshot(): ComparisonSnapshot {
     if (!this.meta) throw new Error("Tracker not started");
-    return compareMarkets(this.meta, this.pm.getMarkets(), this.nt.getMarkets(), {
-      polymarket: this.lastError ? `error: ${this.lastError}` : this.pm.getStatus(),
-      norsktipping: this.nt.getStatus(),
-    });
+    return compareMarkets(
+      this.meta,
+      [
+        { source: "polymarket", markets: this.pm.getMarkets(), status: this.pm.getStatus() },
+        { source: "norsktipping", markets: this.nt.getMarkets(), status: this.nt.getStatus() },
+        { source: "oddsapi", markets: this.oa.getMarkets(), status: this.oa.getStatus() },
+      ],
+      {
+        polymarket: this.lastError ? `error: ${this.lastError}` : this.pm.getStatus(),
+        norsktipping: this.nt.getStatus(),
+        oddsapi: this.oa.getStatus(),
+      },
+    );
   }
 
   getMeta(): MatchMeta | null {
@@ -61,6 +76,7 @@ export class Tracker extends EventEmitter {
     this.flushTimer = null;
     this.pm.stop();
     this.nt.stop();
+    this.oa.stop();
     this.removeAllListeners();
   }
 }

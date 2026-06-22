@@ -1,14 +1,16 @@
 /**
- * Comparison engine. Merges Polymarket and Norsk Tipping markets by canonical
- * key, computes the odds difference per selection, a vig-removed "fair"
- * probability and a value/edge estimate, then ranks bet types by the biggest
- * difference — which is the whole point of the app.
+ * Comparison engine. Merges any number of books (Polymarket, Norsk Tipping, The
+ * Odds API, …) by canonical market key, and for each selection computes the
+ * price spread across books, the best-paying book, a vig-removed consensus
+ * "fair" probability and the value/edge on the best price. Markets are ranked by
+ * the biggest spread — the whole point of the app.
  */
 
 import type {
   CanonicalMarketType,
   Market,
   MatchMeta,
+  Period,
   Selection,
   SourceId,
 } from "../types.js";
@@ -18,23 +20,23 @@ export interface ComparedQuote {
   decimal: number | null;
   impliedProb: number | null;
   updatedAt: number;
+  meta?: Record<string, unknown>;
 }
 
 export interface ComparedSelection {
   key: string;
   label: string;
   order: number;
-  polymarket: ComparedQuote | null;
-  norsktipping: ComparedQuote | null;
-  hasBoth: boolean;
-  /** Relative gap between the two decimal prices, in %. */
-  oddsDiffPct: number | null;
-  oddsDiffAbs: number | null;
-  /** Book offering the higher (better-for-bettor) decimal odds. */
-  valueSource: SourceId | null;
-  /** Vig-removed consensus probability across the two books. */
+  quotes: Partial<Record<SourceId, ComparedQuote>>;
+  sourceCount: number;
+  /** Book paying the highest decimal odds for this pick. */
+  bestSource: SourceId | null;
+  bestDecimal: number | null;
+  /** Relative gap between the highest and lowest decimal across books, in %. */
+  spreadPct: number | null;
+  /** Vig-removed consensus probability across the books quoting this market. */
   fairProb: number | null;
-  /** Value on the better side vs the consensus fair prob, in %. */
+  /** Value on the best price vs the consensus fair prob, in %. */
   edgePct: number | null;
 }
 
@@ -42,12 +44,13 @@ export interface ComparedMarket {
   type: CanonicalMarketType;
   key: string;
   line?: number;
+  period?: Period;
   label: string;
   sources: SourceId[];
-  hasBoth: boolean;
-  maxOddsDiffPct: number | null;
+  sourceCount: number;
+  maxSpreadPct: number | null;
   bestEdgePct: number | null;
-  bestValueSource: SourceId | null;
+  bestSource: SourceId | null;
   selections: ComparedSelection[];
 }
 
@@ -55,22 +58,26 @@ export interface Highlight {
   marketLabel: string;
   marketKey: string;
   selectionLabel: string;
-  polymarket: number | null;
-  norsktipping: number | null;
-  oddsDiffPct: number;
-  valueSource: SourceId;
+  prices: Partial<Record<SourceId, number | null>>;
+  spreadPct: number;
+  bestSource: SourceId;
 }
 
 export interface ComparisonSnapshot {
   match: MatchMeta;
-  status: {
-    polymarket: string;
-    norsktipping: string;
-  };
-  counts: { both: number; polymarketOnly: number; norsktippingOnly: number };
+  sources: SourceId[];
+  status: Partial<Record<SourceId, string>>;
+  coverage: Partial<Record<SourceId, number>>;
+  counts: { total: number; multi: number };
   highlights: Highlight[];
   markets: ComparedMarket[];
   generatedAt: number;
+}
+
+export interface Book {
+  source: SourceId;
+  markets: Market[];
+  status: string;
 }
 
 const TYPE_ORDER: CanonicalMarketType[] = [
@@ -80,12 +87,7 @@ const TYPE_ORDER: CanonicalMarketType[] = [
   "ANYTIME_GOALSCORER", "FIRST_GOALSCORER", "UNKNOWN",
 ];
 
-/**
- * Markets whose listed selections cover the whole outcome space, so removing
- * the vig by normalising their implied probabilities is valid. For markets like
- * Correct Score or Goalscorer we only list a subset, so a "fair" value / edge
- * would be misleading and we skip it.
- */
+/** Markets whose selections cover the whole outcome space (so de-vigging is valid). */
 const COMPLETE_MARKETS = new Set<CanonicalMarketType>([
   "MATCH_WINNER", "DOUBLE_CHANCE", "DRAW_NO_BET", "BTTS", "TOTAL_GOALS",
   "TEAM_TOTAL_HOME", "TEAM_TOTAL_AWAY", "SPREAD", "ODD_EVEN", "HT_RESULT",
@@ -95,7 +97,7 @@ const COMPLETE_MARKETS = new Set<CanonicalMarketType>([
 function toCompared(sel: Selection | undefined, source: SourceId): ComparedQuote | null {
   const q = sel?.quotes[source];
   if (!q) return null;
-  return { decimal: q.decimal, impliedProb: q.impliedProb, updatedAt: q.updatedAt };
+  return { decimal: q.decimal, impliedProb: q.impliedProb, updatedAt: q.updatedAt, meta: q.meta };
 }
 
 /** Vig-removed probabilities for one source's selections within a market. */
@@ -115,115 +117,107 @@ function fairProbs(market: Market | undefined, source: SourceId): Map<string, nu
   return out;
 }
 
-function mergeOne(
-  key: string,
-  pm: Market | undefined,
-  nt: Market | undefined,
-): ComparedMarket {
-  const ref = (pm ?? nt)!;
+function mergeOne(key: string, bySource: Map<SourceId, Market>): ComparedMarket {
+  const ref = [...bySource.values()][0]!;
   const complete = COMPLETE_MARKETS.has(ref.type);
-  const fairPm = complete ? fairProbs(pm, "polymarket") : new Map<string, number>();
-  const fairNt = complete ? fairProbs(nt, "norsktipping") : new Map<string, number>();
+  const fair = new Map<SourceId, Map<string, number>>();
+  for (const [src, mkt] of bySource) fair.set(src, complete ? fairProbs(mkt, src) : new Map());
 
+  // Union of selection keys across all books, preserving first-seen order.
   const selKeys: string[] = [];
   const seen = new Set<string>();
-  for (const s of [...(pm?.selections ?? []), ...(nt?.selections ?? [])]) {
-    if (!seen.has(s.key)) {
-      seen.add(s.key);
-      selKeys.push(s.key);
-    }
-  }
+  for (const mkt of bySource.values())
+    for (const s of mkt.selections)
+      if (!seen.has(s.key)) { seen.add(s.key); selKeys.push(s.key); }
 
   const selections: ComparedSelection[] = selKeys.map((sk) => {
-    const pmSel = pm?.selections.find((s) => s.key === sk);
-    const ntSel = nt?.selections.find((s) => s.key === sk);
-    const pmQ = toCompared(pmSel, "polymarket");
-    const ntQ = toCompared(ntSel, "norsktipping");
-    const hasBoth = !!(pmQ?.decimal && ntQ?.decimal);
+    const quotes: Partial<Record<SourceId, ComparedQuote>> = {};
+    let labels = "";
+    let order = 0;
+    const decimals: { source: SourceId; decimal: number }[] = [];
+    const fairParts: number[] = [];
 
-    let oddsDiffPct: number | null = null;
-    let oddsDiffAbs: number | null = null;
-    let valueSource: SourceId | null = null;
+    for (const [src, mkt] of bySource) {
+      const sel = mkt.selections.find((s) => s.key === sk);
+      const cq = toCompared(sel, src);
+      if (cq) {
+        quotes[src] = cq;
+        if (cq.decimal && cq.decimal > 1) decimals.push({ source: src, decimal: cq.decimal });
+        if ((sel?.label?.length ?? 0) > labels.length) { labels = sel!.label; order = sel!.order ?? 0; }
+        const fp = fair.get(src)?.get(sk);
+        if (fp != null) fairParts.push(fp);
+      }
+    }
+
+    let bestSource: SourceId | null = null;
+    let bestDecimal: number | null = null;
+    let spreadPct: number | null = null;
     let fairProb: number | null = null;
     let edgePct: number | null = null;
 
-    const dp = pmQ?.decimal ?? null;
-    const dn = ntQ?.decimal ?? null;
-    if (dp && dn) {
-      oddsDiffAbs = round(Math.abs(dp - dn), 3);
-      oddsDiffPct = round((Math.abs(dp - dn) / Math.min(dp, dn)) * 100, 2);
-      valueSource = dp >= dn ? "polymarket" : "norsktipping";
-
-      const fp = fairPm.get(sk);
-      const fn = fairNt.get(sk);
-      const parts = [fp, fn].filter((x): x is number => x != null);
-      if (parts.length) {
-        fairProb = round(parts.reduce((a, b) => a + b, 0) / parts.length, 4);
-        const best = Math.max(dp, dn);
-        edgePct = round((fairProb * best - 1) * 100, 2);
+    if (decimals.length) {
+      const best = decimals.reduce((a, b) => (b.decimal > a.decimal ? b : a));
+      const worst = decimals.reduce((a, b) => (b.decimal < a.decimal ? b : a));
+      bestSource = best.source;
+      bestDecimal = best.decimal;
+      if (decimals.length >= 2) spreadPct = round(((best.decimal - worst.decimal) / worst.decimal) * 100, 2);
+      if (fairParts.length) {
+        fairProb = round(fairParts.reduce((a, b) => a + b, 0) / fairParts.length, 4);
+        edgePct = round((fairProb * best.decimal - 1) * 100, 2);
       }
-    } else if (dp || dn) {
-      valueSource = dp ? "polymarket" : "norsktipping";
     }
 
-    const label = (pmSel?.label?.length ?? 0) >= (ntSel?.label?.length ?? 0)
-      ? pmSel?.label ?? ntSel?.label ?? sk
-      : ntSel?.label ?? sk;
-    const order = pmSel?.order ?? ntSel?.order ?? 0;
-
     return {
-      key: sk, label, order,
-      polymarket: pmQ, norsktipping: ntQ,
-      hasBoth, oddsDiffPct, oddsDiffAbs, valueSource, fairProb, edgePct,
+      key: sk, label: labels || sk, order,
+      quotes, sourceCount: decimals.length,
+      bestSource, bestDecimal, spreadPct, fairProb, edgePct,
     };
   });
 
   selections.sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
 
-  const bothSels = selections.filter((s) => s.hasBoth);
-  const maxOddsDiffPct = bothSels.length
-    ? Math.max(...bothSels.map((s) => s.oddsDiffPct ?? 0))
-    : null;
+  const multi = selections.filter((s) => s.sourceCount >= 2);
+  const maxSpreadPct = multi.length ? Math.max(...multi.map((s) => s.spreadPct ?? 0)) : null;
   let bestEdgePct: number | null = null;
-  let bestValueSource: SourceId | null = null;
-  for (const s of bothSels) {
+  let bestSource: SourceId | null = null;
+  for (const s of multi) {
     if (s.edgePct != null && (bestEdgePct == null || s.edgePct > bestEdgePct)) {
       bestEdgePct = s.edgePct;
-      bestValueSource = s.valueSource;
+      bestSource = s.bestSource;
     }
   }
 
-  const sources: SourceId[] = [];
-  if (pm) sources.push("polymarket");
-  if (nt) sources.push("norsktipping");
-
+  const sources = [...bySource.keys()];
   return {
-    type: ref.type, key, line: ref.line, label: ref.label,
-    sources, hasBoth: !!(pm && nt),
-    maxOddsDiffPct, bestEdgePct, bestValueSource, selections,
+    type: ref.type, key, line: ref.line, period: ref.period, label: ref.label,
+    sources, sourceCount: sources.length,
+    maxSpreadPct, bestEdgePct, bestSource, selections,
   };
 }
 
 export function compareMarkets(
   match: MatchMeta,
-  pmMarkets: Market[],
-  ntMarkets: Market[],
-  status: { polymarket: string; norsktipping: string },
+  books: Book[],
+  status: Partial<Record<SourceId, string>>,
 ): ComparisonSnapshot {
-  const pmByKey = new Map(pmMarkets.map((m) => [m.key, m]));
-  const ntByKey = new Map(ntMarkets.map((m) => [m.key, m]));
-  const keys = new Set([...pmByKey.keys(), ...ntByKey.keys()]);
+  const activeSources = books.filter((b) => b.markets.length).map((b) => b.source);
 
-  const markets: ComparedMarket[] = [...keys].map((k) =>
-    mergeOne(k, pmByKey.get(k), ntByKey.get(k)),
-  );
+  // marketKey -> (source -> Market)
+  const grouped = new Map<string, Map<SourceId, Market>>();
+  for (const book of books) {
+    for (const m of book.markets) {
+      let g = grouped.get(m.key);
+      if (!g) { g = new Map(); grouped.set(m.key, g); }
+      g.set(book.source, m);
+    }
+  }
 
-  // Sort: markets with both books first, then biggest difference, then a stable
-  // canonical type order.
+  const markets = [...grouped.entries()].map(([k, bySource]) => mergeOne(k, bySource));
+
   markets.sort((a, b) => {
-    if (a.hasBoth !== b.hasBoth) return a.hasBoth ? -1 : 1;
-    const da = a.maxOddsDiffPct ?? -1;
-    const db = b.maxOddsDiffPct ?? -1;
+    if (a.sourceCount !== b.sourceCount) return b.sourceCount - a.sourceCount;
+    const da = a.maxSpreadPct ?? -1;
+    const db = b.maxSpreadPct ?? -1;
     if (db !== da) return db - da;
     const ta = TYPE_ORDER.indexOf(a.type);
     const tb = TYPE_ORDER.indexOf(b.type);
@@ -231,33 +225,39 @@ export function compareMarkets(
     return (a.line ?? 0) - (b.line ?? 0);
   });
 
-  const counts = { both: 0, polymarketOnly: 0, norsktippingOnly: 0 };
-  for (const m of markets) {
-    if (m.hasBoth) counts.both++;
-    else if (m.sources[0] === "polymarket") counts.polymarketOnly++;
-    else counts.norsktippingOnly++;
-  }
+  const coverage: Partial<Record<SourceId, number>> = {};
+  for (const b of books) coverage[b.source] = b.markets.length;
+  const counts = {
+    total: markets.length,
+    multi: markets.filter((m) => m.sourceCount >= 2).length,
+  };
 
   const highlights: Highlight[] = markets
+    .filter((m) => COMPLETE_MARKETS.has(m.type)) // skip partial markets (correct score, goalscorers) where a big gap isn't real value
     .flatMap((m) =>
       m.selections
-        .filter((s) => s.hasBoth && s.oddsDiffPct != null)
-        .map((s) => ({
-          marketLabel: m.label,
-          marketKey: m.key,
-          selectionLabel: s.label,
-          polymarket: s.polymarket?.decimal ?? null,
-          norsktipping: s.norsktipping?.decimal ?? null,
-          oddsDiffPct: s.oddsDiffPct as number,
-          valueSource: s.valueSource as SourceId,
-        })),
+        .filter((s) => s.sourceCount >= 2 && s.spreadPct != null)
+        .map((s) => {
+          const prices: Partial<Record<SourceId, number | null>> = {};
+          for (const src of activeSources) prices[src] = s.quotes[src]?.decimal ?? null;
+          return {
+            marketLabel: m.label,
+            marketKey: m.key,
+            selectionLabel: s.label,
+            prices,
+            spreadPct: s.spreadPct as number,
+            bestSource: s.bestSource as SourceId,
+          };
+        }),
     )
-    .sort((a, b) => b.oddsDiffPct - a.oddsDiffPct)
+    .sort((a, b) => b.spreadPct - a.spreadPct)
     .slice(0, 8);
 
   return {
     match,
+    sources: activeSources,
     status,
+    coverage,
     counts,
     highlights,
     markets,

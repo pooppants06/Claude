@@ -15,7 +15,7 @@ function num(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-export type NorskTippingProvider = "mock" | "http";
+export type NorskTippingProvider = "mock" | "http" | "oddsen";
 export type PolymarketProvider = "gamma" | "demo";
 
 // Polymarket splits one match across several events (the pasted slug is usually
@@ -60,10 +60,30 @@ export const config = {
   },
 
   norskTipping: {
+    // "oddsen" = real public Oddsen API (recommended), "http" = your own proxy
+    // returning the canonical contract, "mock" = offline simulation.
     provider: env("NORSKTIPPING_PROVIDER", "mock") as NorskTippingProvider,
     httpUrl: env("NORSKTIPPING_HTTP_URL", ""),
     httpHeaders: parseHeaders(env("NORSKTIPPING_HTTP_HEADERS", "")),
+    oddsenUrl: env("NORSKTIPPING_ODDSEN_URL", "https://api.norsk-tipping.no/OddsenGameInfo/v1/api"),
     pollMs: num("NORSKTIPPING_POLL_MS", 4000),
+  },
+
+  // The Odds API (https://the-odds-api.com) — real third source aggregating
+  // dozens of bookmakers. Enabled only when ODDS_API_KEY is set. Quota is
+  // limited (cost = markets × regions per refresh), so it polls slowly.
+  oddsApi: {
+    apiKey: env("ODDS_API_KEY", ""),
+    baseUrl: env("ODDS_API_BASE_URL", "https://api.the-odds-api.com/v4"),
+    // Sport key; defaults to the World Cup since the app is World-Cup-centric.
+    sport: env("ODDS_API_SPORT", "soccer_fifa_world_cup"),
+    regions: env("ODDS_API_REGIONS", "eu,uk"),
+    // Markets we can map to canonical types (kept lean to save quota).
+    markets: env(
+      "ODDS_API_MARKETS",
+      "h2h,totals,spreads,btts,h2h_h1,h2h_h2,totals_h1,totals_h2,team_totals",
+    ),
+    pollMs: num("ODDS_API_POLL_MS", 120000),
   },
 };
 
