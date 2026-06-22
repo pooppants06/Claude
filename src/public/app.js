@@ -120,9 +120,13 @@ function feedLabel(s) {
 const SOURCES = {
   polymarket: { name: "Polymarket", col: "Polymarket", cls: "pm" },
   norsktipping: { name: "Norsk Tipping", col: "Norsk Tipping", cls: "nt" },
-  oddsapi: { name: "Best book", col: "Best book (Odds API)", cls: "oa" },
+  oddsapi: { name: "Odds API", col: "Odds API", cls: "oa" },
 };
 const SOURCE_ORDER = ["polymarket", "norsktipping", "oddsapi"];
+// The Odds API column label depends on how its books are aggregated.
+const OA_COL = { average: "Average (Odds API)", median: "Median (Odds API)", best: "Best book (Odds API)" };
+let oaAgg = "average";
+const colLabel = (src) => (src === "oddsapi" ? OA_COL[oaAgg] || "Odds API" : SOURCES[src].col);
 let activeSources = ["polymarket", "norsktipping"];
 let lastSnap = null;
 let selectedSources = null; // Set of source ids the user is comparing
@@ -131,6 +135,12 @@ const round = (n, d = 2) => { const f = 10 ** d; return Math.round(n * f) / f; }
 
 function render(snap) {
   lastSnap = snap;
+  // Detect how the Odds API column is aggregated (from any of its quotes).
+  oaAgg = "average";
+  for (const m of snap.markets) {
+    const meta = m.selections.find((s) => s.quotes.oddsapi?.meta?.agg)?.quotes.oddsapi?.meta;
+    if (meta?.agg) { oaAgg = meta.agg; break; }
+  }
   const present = SOURCE_ORDER.filter((s) => (snap.sources || []).includes(s));
   if (!selectedSources) selectedSources = new Set(present);
   // Keep only sources still present; never allow an empty selection.
@@ -320,7 +330,7 @@ function renderMarket(m) {
   else tags.push(`<span class="tag one">${SOURCES[m.sources[0]]?.name ?? m.sources[0]} only</span>`);
   if (m.maxSpreadPct != null) tags.push(`<span class="tag maxdiff">max diff ${m.maxSpreadPct.toFixed(1)}%</span>`);
 
-  const heads = activeSources.map((s) => `<th>${SOURCES[s].col}</th>`).join("");
+  const heads = activeSources.map((s) => `<th>${colLabel(s)}</th>`).join("");
   const rows = m.selections.map((s) => renderRow(m, s)).join("");
   return `<div class="market">
     <header>
@@ -357,8 +367,12 @@ function renderRow(m, s) {
 function oddsCell(q, cls, cellId, isBest) {
   if (!q || q.decimal == null) return `<td class="odds empty" data-cell="${cellId}">—</td>`;
   const prob = q.impliedProb != null ? `<small>${(q.impliedProb * 100).toFixed(1)}%</small>` : "";
-  const book = q.meta && q.meta.book ? ` title="${escape(String(q.meta.book))}${q.meta.books ? ` · ${q.meta.books} books` : ""}"` : "";
-  return `<td class="odds ${cls}${isBest ? " best" : ""}" data-cell="${cellId}"${book}>${fmt(q.decimal)}${prob}</td>`;
+  let tip = "";
+  if (q.meta && q.meta.agg) {
+    const label = { average: "average", median: "median", best: q.meta.book ? `best (${q.meta.book})` : "best" }[q.meta.agg] || q.meta.agg;
+    tip = ` title="${escape(label)} of ${q.meta.books || 0} bookmakers"`;
+  }
+  return `<td class="odds ${cls}${isBest ? " best" : ""}" data-cell="${cellId}"${tip}>${fmt(q.decimal)}${prob}</td>`;
 }
 
 function flagFlash(id, decimal) {

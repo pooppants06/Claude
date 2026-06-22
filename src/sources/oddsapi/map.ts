@@ -2,14 +2,30 @@
  * Map a The Odds API event-odds payload into our canonical markets.
  *
  * The Odds API returns one entry per bookmaker; we collapse them into a single
- * "oddsapi" book by keeping the BEST (highest) decimal price for each selection
- * across all bookmakers — i.e. the best price a bettor could actually get — and
- * record which book offered it (and how many quoted it) in the quote meta.
+ * "oddsapi" book per the configured aggregation (default: the AVERAGE decimal
+ * across all bookmakers), recording the aggregation mode and book count in the
+ * quote meta.
  */
 
+import { config } from "../../config.js";
 import type { Market, Period, TeamInfo } from "../../types.js";
-import { emptyMarket, makeQuote, marketKey, upsertQuote } from "../../normalize/markets.js";
+import { emptyMarket, makeQuote, marketKey, round, upsertQuote } from "../../normalize/markets.js";
 import { classifyTeamSide } from "../../normalize/teams.js";
+
+/** Collapse every bookmaker's price for one selection into a single number. */
+function aggregate(prices: { decimal: number; book: string }[]): { decimal: number; book?: string } {
+  const ds = prices.map((p) => p.decimal);
+  if (config.oddsApi.agg === "best") {
+    const best = prices.reduce((a, b) => (b.decimal > a.decimal ? b : a));
+    return { decimal: best.decimal, book: best.book };
+  }
+  if (config.oddsApi.agg === "median") {
+    const s = [...ds].sort((a, b) => a - b);
+    const m = Math.floor(s.length / 2);
+    return { decimal: s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2 };
+  }
+  return { decimal: ds.reduce((a, b) => a + b, 0) / ds.length };
+}
 
 export interface OAOutcome { name: string; price: number; point?: number; description?: string }
 export interface OAMarket { key: string; outcomes?: OAOutcome[] }
@@ -110,11 +126,14 @@ export function buildOddsApiMarkets(ev: OAEvent, teams: TeamInfo): Market[] {
 
   for (const [id, list] of prices) {
     const { sel, market } = selMeta.get(id)!;
-    const best = list.reduce((a, b) => (b.decimal > a.decimal ? b : a));
+    const agg = aggregate(list);
     upsertQuote(
       market,
       { key: sel.selKey, label: sel.selLabel, order: sel.selOrder },
-      makeQuote("oddsapi", { decimal: best.decimal, meta: { book: best.book, books: list.length } }),
+      makeQuote("oddsapi", {
+        decimal: round(agg.decimal, 3),
+        meta: { agg: config.oddsApi.agg, books: list.length, ...(agg.book ? { book: agg.book } : {}) },
+      }),
     );
   }
 

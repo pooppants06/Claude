@@ -78,6 +78,9 @@ export const config = {
     // Sport key; defaults to the World Cup since the app is World-Cup-centric.
     sport: env("ODDS_API_SPORT", "soccer_fifa_world_cup"),
     regions: env("ODDS_API_REGIONS", "eu,uk"),
+    // How to collapse the many bookmakers into one column: average (mean
+    // decimal across books), median, or best (highest) price.
+    agg: env("ODDS_API_AGG", "average") as "average" | "median" | "best",
     // Markets we can map to canonical types (kept lean to save quota).
     markets: env(
       "ODDS_API_MARKETS",
