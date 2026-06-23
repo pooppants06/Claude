@@ -62,17 +62,25 @@ async function resolveEventId(meta: MatchMeta): Promise<NtEvent> {
   const day = slugDate ? new Date(`${slugDate}T12:00:00Z`) : meta.startDate ? new Date(meta.startDate) : new Date();
   const from = dayStamp(new Date(day.getTime() - 24 * 3600 * 1000), "0000");
   const to = dayStamp(new Date(day.getTime() + 24 * 3600 * 1000), "2359");
-  const data = await getJson(`${base}/events/${FOOTBALL}/${from}/${to}`);
-  const events: NtEvent[] = data?.eventList ?? [];
   const hk = teamKey(meta.teams.home);
   const ak = teamKey(meta.teams.away);
   // Match on either participant resembling our home/away (Østerrike≈Austria etc.).
-  const match = events.find((e) => {
+  const matchesTeams = (e: NtEvent) => {
     const h = teamKey(e.homeParticipant ?? "");
     const a = teamKey(e.awayParticipant ?? "");
-    const near = (x: string, y: string) => x && y && (x === y || x.includes(y) || y.includes(x));
-    return (near(h, hk) || near(h, ak) || near(a, hk) || near(a, ak));
-  });
+    return near(h, hk) || near(h, ak) || near(a, hk) || near(a, ak);
+  };
+
+  // Pre-match listing first.
+  const pre: NtEvent[] = (await getJson(`${base}/events/${FOOTBALL}/${from}/${to}`))?.eventList ?? [];
+  let match = pre.find(matchesTeams);
+  // Once a game kicks off, Norsk Tipping drops it from the pre-match window and
+  // moves it to the live feed under a NEW event id — fall back to that so
+  // in-play matches still resolve.
+  if (!match) {
+    const live: NtEvent[] = (await getJson(`${base}/liveevents/${FOOTBALL}`))?.eventList ?? [];
+    match = live.find(matchesTeams);
+  }
   if (!match) throw new Error(`No Norsk Tipping event found for ${meta.teams.home} vs ${meta.teams.away}`);
   return match;
 }
