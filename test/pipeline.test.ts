@@ -21,6 +21,7 @@ import {
 } from "../src/sources/polymarket/gamma.js";
 import { generateNorskTippingMarkets } from "../src/sources/norsktipping/mock.js";
 import { compareMarkets } from "../src/compare/compare.js";
+import { buildOrientation } from "../src/sources/norsktipping/oddsen.js";
 import type { MatchMeta, TeamInfo } from "../src/types.js";
 
 const teams: TeamInfo = { home: "Brazil", away: "Haiti", homeCode: "bra", awayCode: "hai" };
@@ -188,6 +189,35 @@ test("de-vig ignores a book that prices only one side of a market", () => {
   const over = snap.markets[0]!.selections.find((s) => s.key === "OVER")!;
   assert.ok(over.fairProb != null && over.fairProb < 0.1, `fair prob poisoned: ${over.fairProb}`);
   assert.ok(over.edgePct != null && over.edgePct < 50, `phantom edge not contained: ${over.edgePct}`);
+});
+
+test("buildOrientation realigns Norsk Tipping's reversed home/away", () => {
+  // Polymarket has Côte d'Ivoire home, Curaçao away; Norsk Tipping lists the
+  // same fixture with the sides reversed (and the favourite spelled in Norwegian).
+  const civMeta: MatchMeta = {
+    slug: "fifwc-civ-cuw-2026-06-25",
+    title: "Côte d'Ivoire vs Curaçao",
+    teams: { home: "Côte d'Ivoire", away: "Curaçao", homeCode: "civ", awayCode: "cuw" },
+    polymarketUrl: "x",
+  };
+  const flipped = buildOrientation(civMeta, {
+    eventId: "1",
+    homeParticipant: "Curaçao",
+    awayParticipant: "Elfenbenskysten",
+  });
+  assert.equal(flipped.flip, true);
+  // NT's home participant (Curaçao) must resolve to our canonical AWAY side.
+  assert.equal(flipped.sideForName("Curaçao"), "AWAY");
+
+  // A book that already agrees on orientation must not be flipped.
+  const aligned = buildOrientation(meta, {
+    eventId: "2",
+    homeParticipant: "Brazil",
+    awayParticipant: "Haiti",
+  });
+  assert.equal(aligned.flip, false);
+  assert.equal(aligned.sideForName("Brazil"), "HOME");
+  assert.equal(aligned.sideForName("Haiti"), "AWAY");
 });
 
 test("matchCore + sameMatch group a match's sibling events but exclude others", () => {

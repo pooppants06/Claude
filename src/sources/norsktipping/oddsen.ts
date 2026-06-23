@@ -19,7 +19,7 @@ import { parseSlug, teamKey } from "../../normalize/teams.js";
 
 interface NtSelection { selectionName: string; selectionShortName?: string; selectionValue?: string; selectionOdds?: string }
 interface NtMarket { marketId: string; marketName: string; selections?: NtSelection[] }
-interface NtEvent {
+export interface NtEvent {
   eventId: string;
   homeParticipant?: string;
   awayParticipant?: string;
@@ -93,24 +93,66 @@ function periodOf(name: string): Period | undefined {
   return undefined;
 }
 
+const near = (x: string, y: string) => !!x && !!y && (x === y || x.includes(y) || y.includes(x));
+
+interface Orientation {
+  /** True when Norsk Tipping's home/away is the reverse of Polymarket's. */
+  flip: boolean;
+  /** Does this market/selection name refer to our canonical HOME / AWAY team? */
+  mentions: (name: string, side: "HOME" | "AWAY") => boolean;
+  sideForName: (name: string) => "HOME" | "AWAY" | null;
+}
+
+/**
+ * Norsk Tipping encodes sides (H/A) and names teams relative to ITS OWN view of
+ * home/away, which is frequently the reverse of Polymarket's. Resolve the
+ * orientation once from the event participants so every side-based market lines
+ * up with our canonical home/away instead of silently swapping favourite and
+ * underdog.
+ */
+export function buildOrientation(meta: MatchMeta, ev: NtEvent): Orientation {
+  const hk = teamKey(meta.teams.home);
+  const ak = teamKey(meta.teams.away);
+  const ntHome = teamKey(ev.homeParticipant ?? "");
+  const ntAway = teamKey(ev.awayParticipant ?? "");
+  const aligns = near(ntHome, hk) || near(ntAway, ak);
+  const crosses = near(ntHome, ak) || near(ntAway, hk);
+  const flip = crosses && !aligns;
+  // NT's spelling of each canonical side (after any flip), e.g. "Sveits" for Switzerland.
+  const ntKeyOf = (side: "HOME" | "AWAY") =>
+    side === "HOME" ? (flip ? ntAway : ntHome) : (flip ? ntHome : ntAway);
+  const mentions = (name: string, side: "HOME" | "AWAY") => {
+    const k = teamKey(name);
+    const ntk = ntKeyOf(side);
+    return (!!ntk && k.includes(ntk)) || k.includes(side === "HOME" ? hk : ak);
+  };
+  const sideForName = (name: string): "HOME" | "AWAY" | null => {
+    const h = mentions(name, "HOME");
+    const a = mentions(name, "AWAY");
+    return h && !a ? "HOME" : a && !h ? "AWAY" : null;
+  };
+  return { flip, mentions, sideForName };
+}
+
 /**
  * Map one Norsk Tipping market onto a canonical market, or surface it verbatim
  * as a Norsk-Tipping-only market. Returns the Market to merge into the book.
  */
-function mapMarket(m: NtMarket, meta: MatchMeta, ev: NtEvent): Market | null {
+function mapMarket(m: NtMarket, meta: MatchMeta, ev: NtEvent, o: Orientation): Market | null {
   const name = m.marketName;
   const t = name.toLowerCase();
   const sels = (m.selections ?? []).filter((s) => num(s.selectionOdds) != null);
   if (!sels.length) return null;
-  const home = ev.homeParticipant ?? meta.teams.home;
-  const away = ev.awayParticipant ?? meta.teams.away;
   const period = periodOf(name);
   const q = (s: NtSelection) => makeQuote("norsktipping", { decimal: num(s.selectionOdds)! });
 
+  const HOME = { key: "HOME", label: meta.teams.home, order: 0 };
+  const DRAW = { key: "DRAW", label: "Draw", order: 1 };
+  const AWAY = { key: "AWAY", label: meta.teams.away, order: 2 };
   const sideSel = (v?: string) =>
-    v === "H" ? { key: "HOME", label: meta.teams.home, order: 0 }
-    : v === "D" || v === "U" || v === "X" ? { key: "DRAW", label: "Draw", order: 1 }
-    : v === "A" || v === "B" ? { key: "AWAY", label: meta.teams.away, order: 2 }
+    v === "H" ? (o.flip ? AWAY : HOME)
+    : v === "D" || v === "U" || v === "X" ? DRAW
+    : v === "A" || v === "B" ? (o.flip ? HOME : AWAY)
     : null;
 
   // ---- 1X2 (full / 1st half / 2nd half) — strict, so combo markets like
@@ -127,9 +169,9 @@ function mapMarket(m: NtMarket, meta: MatchMeta, ev: NtEvent): Market | null {
     : { key: "UNDER", label: s.selectionName, order: 1 };
   if (/totalt antall .*mål/.test(t) && /over\/?under/.test(t)) {
     const line = ouLine(sels[0]!);
-    let type: Market["type"] = "TOTAL_GOALS";
-    if (teamKey(name).includes(teamKey(home))) type = "TEAM_TOTAL_HOME";
-    else if (teamKey(name).includes(teamKey(away))) type = "TEAM_TOTAL_AWAY";
+    const side = o.sideForName(name);
+    const type: Market["type"] =
+      side === "HOME" ? "TEAM_TOTAL_HOME" : side === "AWAY" ? "TEAM_TOTAL_AWAY" : "TOTAL_GOALS";
     const mk = emptyMarket(type, line, undefined, period);
     for (const s of sels) upsertQuote(mk, ouSel(s), q(s));
     return mk;
@@ -156,10 +198,9 @@ function mapMarket(m: NtMarket, meta: MatchMeta, ev: NtEvent): Market | null {
   if (/dobbelsjanse/.test(t)) {
     const mk = emptyMarket("DOUBLE_CHANCE");
     for (const s of sels) {
-      const n = teamKey(s.selectionName);
       if (!/ eller |eller/.test(s.selectionName.toLowerCase())) continue;
-      const hasHome = n.includes(teamKey(home));
-      const hasAway = n.includes(teamKey(away));
+      const hasHome = o.mentions(s.selectionName, "HOME");
+      const hasAway = o.mentions(s.selectionName, "AWAY");
       const hasDraw = /uavgjort/.test(s.selectionName.toLowerCase());
       const sel = hasHome && hasDraw ? { key: "1X", label: `${meta.teams.home} or Draw`, order: 0 }
         : hasAway && hasDraw ? { key: "X2", label: `Draw or ${meta.teams.away}`, order: 2 }
@@ -195,12 +236,14 @@ function mapMarket(m: NtMarket, meta: MatchMeta, ev: NtEvent): Market | null {
   if (/lag til å score 1\.? mål/.test(t)) {
     const mk = emptyMarket("FIRST_TEAM_TO_SCORE");
     for (const s of sels) {
+      const side = /ingen/i.test(s.selectionName) ? null : o.sideForName(s.selectionName);
       const sel = /ingen/i.test(s.selectionName) ? { key: "NEITHER", label: "Neither", order: 1 }
-        : teamKey(s.selectionName).includes(teamKey(home)) ? { key: "HOME", label: meta.teams.home, order: 0 }
-        : { key: "AWAY", label: meta.teams.away, order: 2 };
-      upsertQuote(mk, sel, q(s));
+        : side === "HOME" ? HOME
+        : side === "AWAY" ? AWAY
+        : null;
+      if (sel) upsertQuote(mk, sel, q(s));
     }
-    return mk;
+    return mk.selections.length ? mk : null;
   }
   // ---- First / anytime goalscorer ----
   if (/kampens 1\.? målscorer/.test(t) || (/målscorer/.test(t) && /1\./.test(t))) {
@@ -224,11 +267,12 @@ function mapMarket(m: NtMarket, meta: MatchMeta, ev: NtEvent): Market | null {
 
 export async function fetchNorskTippingOddsen(meta: MatchMeta): Promise<Market[]> {
   const ev = await resolveEventId(meta);
+  const orientation = buildOrientation(meta, ev);
   const data = await getJson(`${config.norskTipping.oddsenUrl}/markets/${ev.eventId}`);
   const raw: NtMarket[] = data?.markets ?? [];
   const byKey = new Map<string, Market>();
   for (const m of raw) {
-    const mapped = mapMarket(m, meta, ev);
+    const mapped = mapMarket(m, meta, ev, orientation);
     if (!mapped) continue;
     const existing = byKey.get(mapped.key);
     if (existing) {
