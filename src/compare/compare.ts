@@ -122,8 +122,6 @@ function fairProbs(market: Market | undefined, source: SourceId): Map<string, nu
 function mergeOne(key: string, bySource: Map<SourceId, Market>): ComparedMarket {
   const ref = [...bySource.values()][0]!;
   const complete = COMPLETE_MARKETS.has(ref.type);
-  const fair = new Map<SourceId, Map<string, number>>();
-  for (const [src, mkt] of bySource) fair.set(src, complete ? fairProbs(mkt, src) : new Map());
 
   // Union of selection keys across all books, preserving first-seen order.
   const selKeys: string[] = [];
@@ -131,6 +129,22 @@ function mergeOne(key: string, bySource: Map<SourceId, Market>): ComparedMarket 
   for (const mkt of bySource.values())
     for (const s of mkt.selections)
       if (!seen.has(s.key)) { seen.add(s.key); selKeys.push(s.key); }
+
+  // De-vig is only valid when a book prices the WHOLE outcome space. A book that
+  // quotes just one side of a line (e.g. Over but not Under) would normalise that
+  // lone selection to ~100%, poisoning the consensus fair prob (and inventing huge
+  // phantom edges). So only let a book feed the consensus if it covers every
+  // selection in the union.
+  const fair = new Map<SourceId, Map<string, number>>();
+  for (const [src, mkt] of bySource) {
+    const coversAll =
+      complete &&
+      selKeys.every((k) => {
+        const s = mkt.selections.find((x) => x.key === k);
+        return s?.quotes[src]?.impliedProb != null;
+      });
+    fair.set(src, coversAll ? fairProbs(mkt, src) : new Map());
+  }
 
   const selections: ComparedSelection[] = selKeys.map((sk) => {
     const quotes: Partial<Record<SourceId, ComparedQuote>> = {};

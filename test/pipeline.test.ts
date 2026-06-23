@@ -1,7 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { probToDecimal, decimalToProb } from "../src/normalize/markets.js";
+import {
+  probToDecimal,
+  decimalToProb,
+  emptyMarket,
+  upsertQuote,
+  makeQuote,
+} from "../src/normalize/markets.js";
 import { parseSlug, classifyTeamSide } from "../src/normalize/teams.js";
 import {
   classifyPolymarketMarket,
@@ -156,6 +162,32 @@ test("compareMarkets merges both books and ranks by biggest difference", () => {
   const firstSingle = snap.markets.findIndex((m) => m.sourceCount < 2);
   const lastMulti = snap.markets.map((m) => m.sourceCount >= 2).lastIndexOf(true);
   if (firstSingle !== -1) assert.ok(lastMulti < firstSingle);
+});
+
+test("de-vig ignores a book that prices only one side of a market", () => {
+  // Polymarket prices the full Over/Under 2.5 line; Norsk Tipping only lists the
+  // Over. A naive per-book de-vig would normalise NT's lone Over to ~100% and
+  // poison the consensus fair prob (inventing a huge phantom edge). The fair prob
+  // for Over must stay near Polymarket's real ~1.6%, not jump to ~50%.
+  const pmMkt = emptyMarket("TOTAL_GOALS", 2.5);
+  upsertQuote(pmMkt, { key: "OVER", label: "Over 2.5", order: 0 }, makeQuote("polymarket", { decimal: 64.516 }));
+  upsertQuote(pmMkt, { key: "UNDER", label: "Under 2.5", order: 1 }, makeQuote("polymarket", { decimal: 1.016 }));
+
+  const ntMkt = emptyMarket("TOTAL_GOALS", 2.5);
+  upsertQuote(ntMkt, { key: "OVER", label: "Over 2.5", order: 0 }, makeQuote("norsktipping", { decimal: 25 }));
+
+  const snap = compareMarkets(
+    meta,
+    [
+      { source: "polymarket", markets: [pmMkt], status: "live" },
+      { source: "norsktipping", markets: [ntMkt], status: "live" },
+    ],
+    { polymarket: "live", norsktipping: "live" },
+  );
+
+  const over = snap.markets[0]!.selections.find((s) => s.key === "OVER")!;
+  assert.ok(over.fairProb != null && over.fairProb < 0.1, `fair prob poisoned: ${over.fairProb}`);
+  assert.ok(over.edgePct != null && over.edgePct < 50, `phantom edge not contained: ${over.edgePct}`);
 });
 
 test("matchCore + sameMatch group a match's sibling events but exclude others", () => {
