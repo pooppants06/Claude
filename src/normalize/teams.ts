@@ -94,7 +94,11 @@ export function teamKey(name: string): string {
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "") // strip combining accents
-    .replace(/\b(fc|sc|cf|afc|the)\b/g, "")
+    // Drop noise words and connectors so spellings like "Bosnia and Herzegovina"
+    // and "Bosnia-Herzegovina" collapse to the same key (otherwise a team-total
+    // market can fail team detection and leak into the full-match total).
+    .replace(/\b(fc|sc|cf|afc|the|and|og|und)\b/g, "")
+    .replace(/&/g, "")
     .replace(/[^a-z0-9]/g, "")
     .trim();
 }

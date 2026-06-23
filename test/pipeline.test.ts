@@ -8,7 +8,7 @@ import {
   upsertQuote,
   makeQuote,
 } from "../src/normalize/markets.js";
-import { parseSlug, classifyTeamSide } from "../src/normalize/teams.js";
+import { parseSlug, classifyTeamSide, teamKey } from "../src/normalize/teams.js";
 import {
   classifyPolymarketMarket,
   type RawPolymarketMarket,
@@ -189,6 +189,47 @@ test("de-vig ignores a book that prices only one side of a market", () => {
   const over = snap.markets[0]!.selections.find((s) => s.key === "OVER")!;
   assert.ok(over.fairProb != null && over.fairProb < 0.1, `fair prob poisoned: ${over.fairProb}`);
   assert.ok(over.edgePct != null && over.edgePct < 50, `phantom edge not contained: ${over.edgePct}`);
+});
+
+test("teamKey collapses 'and' / '&' spellings", () => {
+  assert.equal(teamKey("Bosnia and Herzegovina"), teamKey("Bosnia-Herzegovina"));
+  assert.equal(teamKey("Trinidad & Tobago"), teamKey("Trinidad and Tobago"));
+});
+
+test("a home team total is not misclassified as the full-match total when team spelling differs", () => {
+  // Polymarket spells the team "Bosnia and Herzegovina" on the moneyline but
+  // "Bosnia-Herzegovina" on the totals. The home team total must stay separate
+  // from the full-match total, or its price corrupts the match total.
+  const bihTeams: TeamInfo = {
+    home: "Bosnia and Herzegovina",
+    away: "Qatar",
+    homeCode: "bih",
+    awayCode: "qat",
+  };
+  const raw: RawPolymarketMarket[] = [
+    {
+      groupItemTitle: "O/U 2.5",
+      question: "Bosnia-Herzegovina vs. Qatar: O/U 2.5",
+      outcomes: JSON.stringify(["Over 2.5", "Under 2.5"]),
+      outcomePrices: JSON.stringify(["0.60", "0.40"]),
+      clobTokenIds: JSON.stringify(["ft-over", "ft-under"]),
+    },
+    {
+      groupItemTitle: "Bosnia-Herzegovina O/U 2.5",
+      question: "Bosnia-Herzegovina vs. Qatar: Bosnia-Herzegovina O/U 2.5",
+      outcomes: JSON.stringify(["Over 2.5", "Under 2.5"]),
+      outcomePrices: JSON.stringify(["0.39", "0.61"]),
+      clobTokenIds: JSON.stringify(["tt-over", "tt-under"]),
+    },
+  ];
+  const { markets } = buildPolymarketMarkets(raw, bihTeams);
+  const ft = markets.find((m) => m.type === "TOTAL_GOALS" && m.line === 2.5);
+  const tt = markets.find((m) => m.type === "TEAM_TOTAL_HOME" && m.line === 2.5);
+  assert.ok(ft, "expected a full-match TOTAL_GOALS@2.5");
+  assert.ok(tt, "expected a TEAM_TOTAL_HOME@2.5");
+  // The full-match Over price must be its own 0.60, not corrupted to the team total's 0.39.
+  const ftOver = ft!.selections.find((s) => s.key === "OVER");
+  assert.ok(Math.abs((ftOver!.quotes.polymarket!.impliedProb ?? 0) - 0.6) < 1e-6, "match total corrupted by team total");
 });
 
 test("buildOrientation realigns Norsk Tipping's reversed home/away", () => {
