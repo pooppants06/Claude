@@ -173,8 +173,13 @@ export function classifyTeamSide(
 
   if (k === home || (homeCode && k === homeCode)) return "HOME";
   if (k === away || (awayCode && k === awayCode)) return "AWAY";
-  // Substring fallback (handles "USA Women", "Brazil U23", etc.)
-  if (home && (k.includes(home) || home.includes(k))) return "HOME";
-  if (away && (k.includes(away) || away.includes(k))) return "AWAY";
+  // Substring fallback (handles "USA Women", "United States O/U 2.5", etc.) using
+  // NON-aliased keys: a long label keeps its native spelling ("United States"),
+  // so the canonical alias ("usa") wouldn't be found inside it.
+  const kRaw = normalizeKey(label);
+  const homeRaw = normalizeKey(teams.home);
+  const awayRaw = normalizeKey(teams.away);
+  if (homeRaw && (kRaw.includes(homeRaw) || homeRaw.includes(kRaw))) return "HOME";
+  if (awayRaw && (kRaw.includes(awayRaw) || awayRaw.includes(kRaw))) return "AWAY";
   return null;
 }

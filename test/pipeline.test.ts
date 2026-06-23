@@ -258,6 +258,16 @@ test("a Norsk Tipping team total is detected by its native (un-aliased) name", (
   assert.equal(o.sideForName("Totalt antall mål - over/under 1.5"), null);
 });
 
+test("classifyTeamSide finds an aliased team inside a longer label", () => {
+  // Alias maps "United States" → "usa", but a market title keeps the native
+  // spelling; the substring match must still resolve it (else its team total
+  // leaks into the full-match total).
+  const t: TeamInfo = { home: "Türkiye", away: "United States", homeCode: "tur", awayCode: "usa" };
+  assert.equal(classifyTeamSide("United States O/U 2.5", t), "AWAY");
+  assert.equal(classifyTeamSide("Türkiye O/U 1.5", t), "HOME");
+  assert.equal(classifyTeamSide("O/U 2.5", t), null);
+});
+
 test("buildOrientation realigns Norsk Tipping's reversed home/away", () => {
   // Polymarket has Côte d'Ivoire home, Curaçao away; Norsk Tipping lists the
   // same fixture with the sides reversed (and the favourite spelled in Norwegian).
