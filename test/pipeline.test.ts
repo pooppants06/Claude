@@ -196,6 +196,16 @@ test("teamKey collapses 'and' / '&' spellings", () => {
   assert.equal(teamKey("Trinidad & Tobago"), teamKey("Trinidad and Tobago"));
 });
 
+test("teamKey maps Norwegian spellings to the same key as English", () => {
+  const pairs: [string, string][] = [
+    ["Skottland", "Scotland"], ["Tyrkia", "Türkiye"], ["Norge", "Norway"],
+    ["Sør-Afrika", "South Africa"], ["Sør-Korea", "Korea Republic"], ["Brasil", "Brazil"],
+    ["Tyskland", "Germany"], ["Elfenbenskysten", "Côte d'Ivoire"], ["Østerrike", "Austria"],
+    ["Kapp Verde", "Cabo Verde"], ["USA", "United States"],
+  ];
+  for (const [no, en] of pairs) assert.equal(teamKey(no), teamKey(en), `${no} ≠ ${en}`);
+});
+
 test("a home team total is not misclassified as the full-match total when team spelling differs", () => {
   // Polymarket spells the team "Bosnia and Herzegovina" on the moneyline but
   // "Bosnia-Herzegovina" on the totals. The home team total must stay separate

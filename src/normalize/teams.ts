@@ -88,12 +88,47 @@ export function parseSlug(slug: string): {
   return { league, homeCode, awayCode, date };
 }
 
+/**
+ * Cross-language / spelling aliases → a single canonical key, so the two books
+ * line up (Norsk Tipping spells countries in Norwegian: Tyrkia, Skottland, Sør-
+ * Afrika, …). Keys are already lower-cased, accent/connector-stripped, with
+ * ø→o, æ→ae, å→a applied.
+ */
+const TEAM_ALIASES: Record<string, string> = {
+  usbekistan: "uzbekistan",
+  kroatia: "croatia",
+  sveits: "switzerland",
+  drkongo: "drcongo", kongo: "congo",
+  marokko: "morocco",
+  skottland: "scotland",
+  brasil: "brazil",
+  sorafrika: "southafrica",
+  sorkorea: "southkorea", korearepublic: "southkorea", korearepublikk: "southkorea",
+  tsjekkia: "czechia",
+  elfenbenskysten: "cotedivoire",
+  tyskland: "germany",
+  nederland: "netherlands",
+  sverige: "sweden",
+  tyrkia: "turkiye",
+  norge: "norway",
+  frankrike: "france",
+  irak: "iraq", iriran: "iran",
+  kappverde: "caboverde", kappverd: "caboverde",
+  spania: "spain",
+  belgia: "belgium",
+  algerie: "algeria",
+  osterrike: "austria",
+  unitedstates: "usa",
+  hercegovina: "bosnia", bosniahercegovina: "bosnia", bosniaherzegovina: "bosnia",
+};
+
 /** Loose key for comparing names across books. */
 export function teamKey(name: string): string {
-  return name
+  const k = name
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "") // strip combining accents
+    .replace(/ø/g, "o").replace(/æ/g, "ae").replace(/å/g, "a")
     // Drop noise words and connectors so spellings like "Bosnia and Herzegovina"
     // and "Bosnia-Herzegovina" collapse to the same key (otherwise a team-total
     // market can fail team detection and leak into the full-match total).
@@ -101,6 +136,7 @@ export function teamKey(name: string): string {
     .replace(/&/g, "")
     .replace(/[^a-z0-9]/g, "")
     .trim();
+  return TEAM_ALIASES[k] ?? k;
 }
 
 /**
