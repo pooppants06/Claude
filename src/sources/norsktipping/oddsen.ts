@@ -15,7 +15,7 @@
 import { config } from "../../config.js";
 import type { Market, MatchMeta, Period } from "../../types.js";
 import { emptyMarket, makeQuote, upsertQuote } from "../../normalize/markets.js";
-import { parseSlug, teamKey } from "../../normalize/teams.js";
+import { parseSlug, teamKey, normalizeKey } from "../../normalize/teams.js";
 
 interface NtSelection { selectionName: string; selectionShortName?: string; selectionValue?: string; selectionOdds?: string }
 interface NtMarket { marketId: string; marketName: string; selections?: NtSelection[] }
@@ -118,13 +118,17 @@ export function buildOrientation(meta: MatchMeta, ev: NtEvent): Orientation {
   const aligns = near(ntHome, hk) || near(ntAway, ak);
   const crosses = near(ntHome, ak) || near(ntAway, hk);
   const flip = crosses && !aligns;
-  // NT's spelling of each canonical side (after any flip), e.g. "Sveits" for Switzerland.
-  const ntKeyOf = (side: "HOME" | "AWAY") =>
-    side === "HOME" ? (flip ? ntAway : ntHome) : (flip ? ntHome : ntAway);
+  // For matching a Norsk Tipping market NAME against the team (both Norwegian),
+  // use the NON-aliased key — the market name keeps its native spelling
+  // ("Usbekistan"), so canonicalising the bare name to "uzbekistan" would miss.
+  const ntHomeRaw = normalizeKey(ev.homeParticipant ?? "");
+  const ntAwayRaw = normalizeKey(ev.awayParticipant ?? "");
+  const rawForSide = (side: "HOME" | "AWAY") =>
+    side === "HOME" ? (flip ? ntAwayRaw : ntHomeRaw) : (flip ? ntHomeRaw : ntAwayRaw);
   const mentions = (name: string, side: "HOME" | "AWAY") => {
-    const k = teamKey(name);
-    const ntk = ntKeyOf(side);
-    return (!!ntk && k.includes(ntk)) || k.includes(side === "HOME" ? hk : ak);
+    const k = normalizeKey(name);
+    const r = rawForSide(side);
+    return (!!r && k.includes(r)) || k.includes(normalizeKey(side === "HOME" ? meta.teams.home : meta.teams.away));
   };
   const sideForName = (name: string): "HOME" | "AWAY" | null => {
     const h = mentions(name, "HOME");

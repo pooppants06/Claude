@@ -242,6 +242,22 @@ test("a home team total is not misclassified as the full-match total when team s
   assert.ok(Math.abs((ftOver!.quotes.polymarket!.impliedProb ?? 0) - 0.6) < 1e-6, "match total corrupted by team total");
 });
 
+test("a Norsk Tipping team total is detected by its native (un-aliased) name", () => {
+  // Cross-book alias maps NT "Usbekistan" → "uzbekistan", but the NT market NAME
+  // keeps "Usbekistan". sideForName must still recognise the team total (else it
+  // leaks into the full-match total and scrambles the goal-line ladder).
+  const meta: MatchMeta = {
+    slug: "fifwc-prt-uzb-2026-06-23",
+    title: "Portugal vs Uzbekistan",
+    teams: { home: "Portugal", away: "Uzbekistan", homeCode: "prt", awayCode: "uzb" },
+    polymarketUrl: "x",
+  };
+  const o = buildOrientation(meta, { eventId: "1", homeParticipant: "Portugal", awayParticipant: "Usbekistan" });
+  assert.equal(o.sideForName("Usbekistan - totalt antall mål - over/under 1.5"), "AWAY");
+  assert.equal(o.sideForName("Portugal - totalt antall mål - over/under 1.5"), "HOME");
+  assert.equal(o.sideForName("Totalt antall mål - over/under 1.5"), null);
+});
+
 test("buildOrientation realigns Norsk Tipping's reversed home/away", () => {
   // Polymarket has Côte d'Ivoire home, Curaçao away; Norsk Tipping lists the
   // same fixture with the sides reversed (and the favourite spelled in Norwegian).

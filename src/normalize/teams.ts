@@ -122,9 +122,14 @@ const TEAM_ALIASES: Record<string, string> = {
   hercegovina: "bosnia", bosniahercegovina: "bosnia", bosniaherzegovina: "bosnia",
 };
 
-/** Loose key for comparing names across books. */
-export function teamKey(name: string): string {
-  const k = name
+/**
+ * Loose key WITHOUT cross-language aliasing. Use this for matching names within
+ * a single book (e.g. does a Norwegian market name contain the Norwegian team
+ * name) — aliasing there would mismatch, since a long market-name string keeps
+ * its native spelling while a bare team name would be canonicalised.
+ */
+export function normalizeKey(name: string): string {
+  return name
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[̀-ͯ]/g, "") // strip combining accents
@@ -136,6 +141,11 @@ export function teamKey(name: string): string {
     .replace(/&/g, "")
     .replace(/[^a-z0-9]/g, "")
     .trim();
+}
+
+/** Loose key for comparing names ACROSS books (folds Norwegian↔English spellings). */
+export function teamKey(name: string): string {
+  const k = normalizeKey(name);
   return TEAM_ALIASES[k] ?? k;
 }
 
