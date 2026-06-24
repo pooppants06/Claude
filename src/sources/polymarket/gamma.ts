@@ -248,9 +248,12 @@ export function buildPolymarketMarkets(
         market = emptyMarket(c.type, c.line, undefined, c.period);
         byKey.set(market.key, market);
       }
+      const meta: Record<string, unknown> = {};
+      if (c.tokenId) meta.tokenId = c.tokenId;
+      if (c.spread != null) meta.spread = c.spread;
       const quote = makeQuote("polymarket", {
         prob: c.prob,
-        meta: c.tokenId ? { tokenId: c.tokenId } : undefined,
+        meta: Object.keys(meta).length ? meta : undefined,
       });
       upsertQuote(
         market,

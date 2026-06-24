@@ -84,9 +84,10 @@ async function one(slug:string,oaIdx:Record<string,any>){
       const oaCell=oaM[oaKey]; if(!oaCell)return;
       const pmPct=100/pm, oaShinPct=100/oaCell.shinOdds;
       if(Math.min(pmPct,oaShinPct)<2)return;
+      const pmSpread=s.quotes.polymarket?.meta?.spread??null; // 0..1 order-book spread
       out.push({title:ev.meta.title,marketLabel:m.label,selectionLabel:s.label,
         pmOdds:pm, ntOdds:ntDec[i], ntShinOdds:1/ntShin[i]!, oaShinOdds:oaCell.shinOdds, oaBooks:oaCell.n,
-        pmPct, oaShinPct, ratio:pmPct/oaShinPct});
+        pmSpread, pmPct, oaShinPct, ratio:pmPct/oaShinPct});
     });
   }
   return out;
@@ -96,11 +97,15 @@ async function run(){
   const oaIdx=buildAllOA();
   const slugs=await wcSlugs();
   const all=(await pool(slugs,4,(s:string)=>one(s,oaIdx))).flat().filter((r:any)=>r.oaBooks>=2);
-  all.sort((a:any,b:any)=>b.ratio-a.ratio);
+  // Opposite direction: Polymarket prices the bet LONGER (less likely) than the
+  // consensus → lowest pmPct/oaShinPct ratio first. invRatio = how much more
+  // likely the de-vigged market thinks it is than Polymarket.
+  all.forEach((r:any)=>{r.invRatio=r.oaShinPct/r.pmPct;});
+  all.sort((a:any,b:any)=>a.ratio-b.ratio);
   const top=all.slice(0,40);
-  writeFileSync("/tmp/multi/top.json",JSON.stringify({at:Date.now(),top,total:all.length},null,2));
+  writeFileSync("/tmp/multi/top_opp.json",JSON.stringify({at:Date.now(),top,total:all.length},null,2));
   console.log(`comparable outcomes (PM & OA-Shin, >=2 books): ${all.length}`);
-  console.log("TOP 20 (PM odds lowest vs OA-Shin):");
-  top.slice(0,20).forEach((r:any,i:number)=>console.log(`${String(i+1).padStart(2)}. ${r.ratio.toFixed(2)}x  ${r.title.slice(0,22).padEnd(22)} ${(r.marketLabel+"/"+r.selectionLabel).slice(0,40).padEnd(40)} PM ${r.pmOdds.toFixed(2)} OAshin ${r.oaShinOdds.toFixed(2)} (${r.oaBooks}bk)`));
+  console.log("TOP 20 (PM odds HIGHEST / least likely vs OA-Shin):");
+  top.slice(0,20).forEach((r:any,i:number)=>console.log(`${String(i+1).padStart(2)}. ${r.invRatio.toFixed(2)}x  ${r.title.slice(0,22).padEnd(22)} ${(r.marketLabel+"/"+r.selectionLabel).slice(0,40).padEnd(40)} PM ${r.pmOdds.toFixed(2)} OAshin ${r.oaShinOdds.toFixed(2)} sprd ${r.pmSpread!=null?(r.pmSpread*100).toFixed(1)+"c":"--"} (${r.oaBooks}bk)`));
 }
 run().then(()=>process.exit(0),e=>{console.error(e);process.exit(1)});

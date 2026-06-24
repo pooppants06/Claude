@@ -21,6 +21,7 @@ export interface RawPolymarketMarket {
   clobTokenIds?: string | string[];
   bestBid?: number | string;
   bestAsk?: number | string;
+  spread?: number | string;
   lastTradePrice?: number | string;
 }
 
@@ -33,6 +34,7 @@ export interface ClassifiedSelection {
   order?: number;
   prob: number | null; // initial implied probability from Gamma
   tokenId?: string;
+  spread?: number | null; // CLOB order-book spread (bestAsk − bestBid), 0..1
 }
 
 /** Parse Gamma's stringified-JSON arrays (or pass through real arrays). */
@@ -180,7 +182,10 @@ function classifySpread(
   if (favSide !== "HOME" && favSide !== "AWAY") return null;
   const mag = Math.abs(Number(m[2]));
   if (!Number.isFinite(mag) || mag === 0) return null;
-  void raw;
+  const sbid = toNum(raw.bestBid);
+  const sask = toNum(raw.bestAsk);
+  const obSpread =
+    toNum(raw.spread) ?? (sbid != null && sask != null ? Math.max(0, sask - sbid) : null);
   const homeLine = favSide === "HOME" ? -mag : mag;
   const out: ClassifiedSelection[] = [];
   outcomes.forEach((label, i) => {
@@ -197,6 +202,7 @@ function classifySpread(
       order: side === "HOME" ? 0 : 1,
       prob: prices[i] ?? null,
       tokenId: tokens[i],
+      spread: obSpread,
     });
   });
   return out.length === 2 ? out : null;
@@ -213,6 +219,13 @@ export function classifyPolymarketMarket(
   const prices = parseJsonArray(raw.outcomePrices).map((p) => toNum(p));
   const tokens = parseJsonArray(raw.clobTokenIds);
   if (outcomes.length === 0) return [];
+
+  // Order-book spread for this market: prefer Gamma's `spread` field, else
+  // derive from best bid/ask. Same for every leg of the (binary) market.
+  const bid = toNum(raw.bestBid);
+  const ask = toNum(raw.bestAsk);
+  const obSpread =
+    toNum(raw.spread) ?? (bid != null && ask != null ? Math.max(0, ask - bid) : null);
 
   const subject = `${raw.groupItemTitle ?? ""} ${raw.question ?? ""}`.trim();
   const text = `${subject} ${outcomes.join(" ")} ${raw.sportsMarketType ?? ""}`;
@@ -245,7 +258,7 @@ export function classifyPolymarketMarket(
   outcomes.forEach((label, i) => {
     const prob = prices[i] ?? null;
     const tokenId = tokens[i];
-    const base = { type, line, period: segP, prob, tokenId };
+    const base = { type, line, period: segP, prob, tokenId, spread: obSpread };
 
     // Binary "team to win" sub-market: only the Yes leg is a clean 1X2 pick.
     if (isBinaryYesNo && type === "MATCH_WINNER") {
