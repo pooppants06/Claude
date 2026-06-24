@@ -9,6 +9,9 @@ function rowsHtml(rows: any[]) {
   return rows.map((r) => {
     const spr = r.pmSpread != null ? (r.pmSpread * 100).toFixed(1) + "¢" : "—";
     const oa = r.oaShin != null ? `${od(r.oaShin)}<span class="bk"> ${r.oaBooks}bk</span>` : "—";
+    const ev = r.pm > 1 && r.oaShin > 1 ? r.pm / r.oaShin - 1 : null;
+    const evCell = ev == null ? "—" : `${ev >= 0 ? "+" : ""}${(ev * 100).toFixed(1)}%`;
+    const evCls = ev == null ? "" : ev > 0 ? "evpos" : "evneg";
     return `<tr class="${r.firstInMarket ? "grp" : ""}">
       <td class="mkt">${r.firstInMarket ? r.market : ""}</td>
       <td class="sel">${r.selection}</td>
@@ -17,6 +20,7 @@ function rowsHtml(rows: any[]) {
       <td class="num">${od(r.nt)}</td>
       <td class="num ntsh">${od(r.ntShin)}</td>
       <td class="num sprd">${spr}</td>
+      <td class="num ${evCls}">${evCell}</td>
     </tr>`;
   }).join("");
 }
@@ -41,17 +45,19 @@ function page(m: any) {
   .oa{color:#f0883e;font-weight:700}
   .ntsh{color:#7ee787}
   .sprd{color:#6e7681;font-size:12px}
+  .evpos{color:#3fb950;font-weight:700}
+  .evneg{color:#6e7681}
   .bk{color:#56616b;font-size:10.5px;font-weight:400}
-  thead th.pmh{color:#79c0ff}thead th.oah{color:#f0883e}thead th.nsh{color:#7ee787}
+  thead th.pmh{color:#79c0ff}thead th.oah{color:#f0883e}thead th.nsh{color:#7ee787}thead th.evh{color:#3fb950}
   </style></head><body>
   <h1>${m.title}</h1>
   <div class="sub">FIFA World Cup 2026 · kickoff ${m.date} · Polymarket vs. Odds-API (Shin) vs. Norsk Tipping</div>
-  <div class="leg"><b>PM</b> Polymarket decimal odds · <b>OA-Shin</b> Odds-API average of all books, de-vigged (Shin) + book count · <b>NT</b> Norsk Tipping raw · <b>NT-Shin</b> Norsk Tipping de-vigged (Shin) · <b>Spread</b> Polymarket order-book bid/ask spread.</div>
+  <div class="leg"><b>PM</b> Polymarket decimal odds · <b>OA-Shin</b> Odds-API average of all books, de-vigged (Shin) + book count · <b>NT</b> Norsk Tipping raw · <b>NT-Shin</b> Norsk Tipping de-vigged (Shin) · <b>Spread</b> Polymarket order-book bid/ask spread · <b>EV</b> = PM ÷ OA-Shin − 1 (edge backing on Polymarket if OA-Shin is the true price).</div>
   <table>
   <thead><tr>
     <th>Market</th><th>Selection</th>
     <th class="num pmh">PM</th><th class="num oah">OA-Shin</th>
-    <th class="num">NT</th><th class="num nsh">NT-Shin</th><th class="num">Spread</th>
+    <th class="num">NT</th><th class="num nsh">NT-Shin</th><th class="num">Spread</th><th class="num evh">EV</th>
   </tr></thead>
   <tbody>${rowsHtml(m.rows)}</tbody></table></body></html>`;
 }
@@ -62,7 +68,7 @@ function page(m: any) {
   for (const [i, m] of d.matches.entries()) {
     const file = `/tmp/multi/cmp5_${i + 1}.png`;
     const pg = await browser.newPage();
-    await pg.setViewport({ width: 1000, height: 900, deviceScaleFactor: 2 });
+    await pg.setViewport({ width: 1090, height: 900, deviceScaleFactor: 2 });
     await pg.setContent(page(m), { waitUntil: "networkidle0" });
     const el = await pg.$("body");
     await el!.screenshot({ path: file });
