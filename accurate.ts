@@ -144,6 +144,7 @@ async function one(slug: string, idx: Record<string, EventModel>) {
       out.push({
         title: ev.meta.title, marketLabel: m.label, selectionLabel: s.label,
         pmOdds: pm, pmSpread: s.quotes.polymarket?.meta?.spread ?? null,
+        pmTokenId: s.quotes.polymarket?.meta?.tokenId ?? null,
         ntOdds: ntByKey[s.key] ?? null,
         consOdds: f.cons ? 1 / f.cons : null, modelOdds: 1 / f.model, fairOdds: 1 / f.fair,
         fairProb: f.fair, effN: f.effN, nBooks: f.nBooks, disp: f.disp, wBlend: f.w, ev: ev_,
