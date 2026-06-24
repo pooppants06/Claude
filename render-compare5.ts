@@ -6,14 +6,17 @@ const d = JSON.parse(readFileSync("/tmp/multi/compare5.json", "utf8"));
 const od = (v: number | null) => (v != null ? v.toFixed(2) : "—");
 
 function rowsHtml(rows: any[]) {
-  return rows.map((r) => {
+  // Sort each match's selections by EV (highest value first); rows with no
+  // OA-Shin (no EV) fall to the bottom. Market shown on every row now.
+  const withEv = rows.map((r) => ({ ...r, ev: r.pm > 1 && r.oaShin > 1 ? r.pm / r.oaShin - 1 : null }));
+  withEv.sort((a, b) => (b.ev ?? -Infinity) - (a.ev ?? -Infinity));
+  return withEv.map((r) => {
     const spr = r.pmSpread != null ? (r.pmSpread * 100).toFixed(1) + "¢" : "—";
     const oa = r.oaShin != null ? `${od(r.oaShin)}<span class="bk"> ${r.oaBooks}bk</span>` : "—";
-    const ev = r.pm > 1 && r.oaShin > 1 ? r.pm / r.oaShin - 1 : null;
-    const evCell = ev == null ? "—" : `${ev >= 0 ? "+" : ""}${(ev * 100).toFixed(1)}%`;
-    const evCls = ev == null ? "" : ev > 0 ? "evpos" : "evneg";
-    return `<tr class="${r.firstInMarket ? "grp" : ""}">
-      <td class="mkt">${r.firstInMarket ? r.market : ""}</td>
+    const evCell = r.ev == null ? "—" : `${r.ev >= 0 ? "+" : ""}${(r.ev * 100).toFixed(1)}%`;
+    const evCls = r.ev == null ? "" : r.ev > 0 ? "evpos" : "evneg";
+    return `<tr>
+      <td class="mkt">${r.market}</td>
       <td class="sel">${r.selection}</td>
       <td class="num pm">${od(r.pm)}</td>
       <td class="num oa">${oa}</td>
@@ -37,7 +40,7 @@ function page(m: any) {
   thead th{background:#161b22;color:#8b949e;font-weight:600;text-transform:uppercase;font-size:10.5px;letter-spacing:.4px;padding:10px 10px;text-align:left;border-bottom:2px solid #30363d}
   thead th.num{text-align:right}
   tbody td{padding:7px 10px;border-bottom:1px solid #1b2129;white-space:nowrap}
-  tr.grp td{border-top:2px solid #30363d}
+  tbody tr:nth-child(even) td{background:#0f141b}
   .mkt{color:#8b949e;font-size:12px;font-weight:600}
   .sel{color:#d2a8ff;font-weight:600}
   .num{text-align:right;font-variant-numeric:tabular-nums}
