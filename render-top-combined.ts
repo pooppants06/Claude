@@ -9,13 +9,13 @@ const all: any[] = [];
 for (const m of d.matches) {
   for (const r of m.rows) {
     if (!(r.pm > 1) || !(r.oaShin > 1)) continue;
-    const pmProb = 1 / r.pm, oaProb = 1 / r.oaShin;
-    if (Math.min(pmProb, oaProb) < 0.03) continue; // drop deep-longshot noise (>~33.0)
-    all.push({ match: m.title, ...r, ev: r.pm / r.oaShin - 1 });
+    const ev = r.pm / r.oaShin - 1;
+    if (ev <= 0) continue; // every positive-EV selection, no cap
+    all.push({ match: m.title, ...r, ev });
   }
 }
 all.sort((a, b) => b.ev - a.ev);
-const top = all.slice(0, 28);
+const top = all;
 
 const od = (v: number | null) => (v != null ? v.toFixed(2) : "—");
 function rowsHtml(rows: any[]) {
@@ -62,9 +62,9 @@ tr:nth-child(even) td{background:#0f141b}
 .bk{color:#56616b;font-size:10.5px;font-weight:400}
 thead th.pmh{color:#79c0ff}thead th.oah{color:#f0883e}thead th.nsh{color:#7ee787}thead th.evh{color:#3fb950}
 </style></head><body>
-<h1>World Cup 2026 — Top value bets across the next 5 matches</h1>
-<div class="sub">All selections combined, ranked by value vs the Odds-API ~40-book Shin consensus — where Polymarket pays longer than fair.</div>
-<div class="leg"><b>PM</b> Polymarket odds · <b>OA-Shin</b> Odds-API all-books average, de-vigged (Shin) + book count · <b>NT</b> Norsk Tipping raw · <b>NT-Shin</b> NT de-vigged · <b>Spread</b> PM order-book spread · <b>EV</b> = PM ÷ OA-Shin − 1 (edge if OA-Shin is the true price). Deep longshots (&gt;33.0) excluded.</div>
+<h1>World Cup 2026 — All positive-EV bets across the next 5 matches</h1>
+<div class="sub">Every selection where Polymarket pays longer than the Odds-API ~40-book Shin consensus, all 5 matches combined, sorted by EV.</div>
+<div class="leg"><b>PM</b> Polymarket odds · <b>OA-Shin</b> Odds-API all-books average, de-vigged (Shin) + book count · <b>NT</b> Norsk Tipping raw · <b>NT-Shin</b> NT de-vigged · <b>Spread</b> PM order-book spread · <b>EV</b> = PM ÷ OA-Shin − 1 (edge if OA-Shin is the true price).</div>
 <table>
 <thead><tr>
   <th class="rank">#</th><th>Match</th><th>Market</th><th>Selection</th>
