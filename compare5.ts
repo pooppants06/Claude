@@ -108,7 +108,8 @@ async function one(slug: string, oaIdx: Record<string, any>) {
 
 async function run() {
   const oaIdx = loadOA();
-  const slugs = ["fifwc-cze-mex-2026-06-24", "fifwc-jpn-swe-2026-06-25", "fifwc-tur-usa-2026-06-25", "fifwc-par-aus-2026-06-25", "fifwc-ury-esp-2026-06-26"];
+  const slate = JSON.parse(readFileSync("/tmp/multi/slate.json", "utf8"));
+  const slugs: string[] = slate.map((s: any) => s.slug);
   const out: any[] = [];
   for (const s of slugs) { try { out.push(await one(s, oaIdx)); } catch (e) { console.log("FAIL", s, (e as Error).message); } }
   writeFileSync("/tmp/multi/compare5.json", JSON.stringify({ at: Date.now(), matches: out }, null, 2));
