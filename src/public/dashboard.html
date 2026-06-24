@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OddsEdge — Fair Value & Trading</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 24px 28px 60px; }
+  h1 { font-size: 22px; font-weight: 700; }
+  .muted { color: #8b949e; }
+  .sub { color: #8b949e; font-size: 13px; margin-top: 3px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+  .controls { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; background: #11161d; border: 1px solid #21262d; border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; }
+  .ctl { display: flex; flex-direction: column; gap: 4px; }
+  .ctl label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px; color: #8b949e; }
+  .ctl input { width: 96px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e6edf3; padding: 7px 9px; font-size: 13px; font-variant-numeric: tabular-nums; }
+  button { background: #21262d; border: 1px solid #30363d; color: #e6edf3; border-radius: 6px; padding: 8px 14px; font-size: 13px; cursor: pointer; font-weight: 600; }
+  button:hover { background: #30363d; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-primary { background: #1f6feb; border-color: #1f6feb; }
+  .btn-primary:hover { background: #388bfd; }
+  .btn-place { background: #238636; border-color: #2ea043; padding: 5px 11px; }
+  .btn-place:hover { background: #2ea043; }
+  .live-wrap { display: flex; align-items: center; gap: 9px; padding: 8px 13px; border-radius: 8px; border: 1px solid #30363d; }
+  .live-on { background: #3d1418; border-color: #da3633; }
+  .switch { position: relative; width: 40px; height: 22px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; inset: 0; background: #30363d; border-radius: 22px; transition: .15s; }
+  .slider:before { content: ""; position: absolute; height: 16px; width: 16px; left: 3px; top: 3px; background: #e6edf3; border-radius: 50%; transition: .15s; }
+  input:checked + .slider { background: #da3633; }
+  input:checked + .slider:before { transform: translateX(18px); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  thead th { background: #161b22; color: #8b949e; font-weight: 600; text-transform: uppercase; font-size: 10.5px; letter-spacing: .4px; padding: 10px 9px; text-align: left; border-bottom: 2px solid #30363d; position: sticky; top: 0; }
+  thead th.num { text-align: right; }
+  tbody td { padding: 9px; border-bottom: 1px solid #21262d; white-space: nowrap; }
+  tr:nth-child(even) td { background: #0f141b; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .match { font-weight: 600; }
+  .mkt { color: #8b949e; font-size: 12px; }
+  .sel { color: #d2a8ff; font-weight: 600; }
+  .pm { color: #79c0ff; font-weight: 700; }
+  .fair { color: #f0883e; font-weight: 700; }
+  .ev { color: #3fb950; font-weight: 700; }
+  .stake { color: #e6edf3; font-weight: 700; }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  .chi { background: #3fb950; } .cmed { background: #d29922; } .clo { background: #6e7681; }
+  .result { font-size: 12px; color: #8b949e; }
+  .result.ok { color: #3fb950; } .result.err { color: #f85149; }
+  .banner { padding: 9px 13px; border-radius: 8px; font-size: 12.5px; margin-bottom: 14px; }
+  .banner.warn { background: #341a00; border: 1px solid #9e6a03; color: #e3b341; }
+  .banner.danger { background: #3d1418; border: 1px solid #da3633; color: #ff7b72; }
+  #status { font-size: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>OddsEdge — Fair Value & Trading</h1>
+    <div class="sub">Polymarket priced against the blended best-estimate fair value. Size with fractional Kelly; place with per-order approval.</div>
+  </div>
+  <div class="live-wrap" id="liveWrap">
+    <label class="switch"><input type="checkbox" id="liveToggle" /><span class="slider"></span></label>
+    <div><div style="font-weight:700;font-size:13px" id="liveLabel">LIVE: off</div><div class="muted" style="font-size:11px" id="liveStatus">dry-run — nothing is placed</div></div>
+  </div>
+</header>
+
+<div class="banner warn" id="liveDisabledBanner">Live trading is not armed. To place real orders, set <code>PK</code>/<code>FUNDER</code> in <code>.env</code> and start the server with <code>ALLOW_LIVE=1</code>. Until then every "place" is a dry-run.</div>
+
+<div class="controls">
+  <div class="ctl"><label>Bankroll $</label><input id="bankroll" type="number" value="500" /></div>
+  <div class="ctl"><label>Kelly ×</label><input id="kelly" type="number" step="0.05" value="0.25" /></div>
+  <div class="ctl"><label>Max $/bet</label><input id="maxStake" type="number" value="50" /></div>
+  <div class="ctl"><label>Max exposure $</label><input id="maxExposure" type="number" value="250" /></div>
+  <div class="ctl"><label>Min EV %</label><input id="minEv" type="number" value="5" /></div>
+  <div class="ctl"><label>Min conf</label><input id="minConf" type="number" step="0.5" value="3" /></div>
+  <div class="ctl"><label>Req. edge pp</label><input id="reqEdge" type="number" value="2" /></div>
+  <div style="display:flex;gap:8px;align-items:flex-end">
+    <button class="btn-primary" id="refreshBtn">↻ Refresh odds</button>
+    <button id="reloadBtn">Reload picks</button>
+  </div>
+  <div id="status" class="muted" style="align-self:flex-end"></div>
+</div>
+
+<table>
+  <thead><tr>
+    <th>#</th><th>Match</th><th>Market</th><th>Selection</th>
+    <th class="num">PM</th><th class="num">Fair</th><th class="num">EV</th><th class="num">Conf</th>
+    <th class="num">Stake</th><th></th><th>Result</th>
+  </tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let PICKS = [], LIVE_ENABLED = false, spent = 0;
+
+const params = () => ({
+  bankroll: +$("bankroll").value, kellyMult: +$("kelly").value, maxStake: +$("maxStake").value,
+  maxExposure: +$("maxExposure").value, minEv: +$("minEv").value / 100, minConf: +$("minConf").value,
+  reqEdge: +$("reqEdge").value / 100,
+});
+function kellyStake(fair, price, { bankroll, kellyMult, maxStake }) {
+  if (!(price > 0 && price < 1) || !(fair > 0 && fair < 1)) return 0;
+  const edge = fair - price; if (edge <= 0) return 0;
+  return Math.min(bankroll * (edge / (1 - price)) * kellyMult, maxStake);
+}
+const conf = (n) => n >= 5 ? ["chi", "high"] : n >= 3 ? ["cmed", "med"] : ["clo", "low"];
+
+function render() {
+  const p = params();
+  const visible = PICKS.filter((r) => r.pmTokenId && r.ev >= p.minEv && r.effN >= p.minConf);
+  spent = 0;
+  $("rows").innerHTML = "";
+  visible.forEach((r, i) => {
+    const price = 1 / r.pmOdds;
+    let stake = kellyStake(r.fairProb, price, p);
+    stake = Math.min(stake, Math.max(0, p.maxExposure - spent));
+    if (stake >= 1) spent += stake;
+    const [cls, tag] = conf(r.effN);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="muted">${i + 1}</td>
+      <td class="match">${r.title}</td>
+      <td class="mkt">${r.marketLabel}</td>
+      <td class="sel">${r.selectionLabel}</td>
+      <td class="num pm">${r.pmOdds.toFixed(2)}</td>
+      <td class="num fair">${r.fairOdds.toFixed(2)}</td>
+      <td class="num ev">+${(r.ev * 100).toFixed(1)}%</td>
+      <td class="num"><span class="dot ${cls}"></span>${r.effN.toFixed(1)} <span class="muted">${tag}</span></td>
+      <td class="num stake">${stake >= 1 ? "$" + stake.toFixed(2) : "—"}</td>
+      <td class="num"><button class="btn-place" ${stake >= 1 ? "" : "disabled"}>Place</button></td>
+      <td class="result"></td>`;
+    const btn = tr.querySelector("button");
+    btn.onclick = () => placeOrder(r, btn, tr.querySelector(".result"));
+    $("rows").appendChild(tr);
+  });
+  $("status").textContent = `${visible.length} picks · planned exposure ~$${spent.toFixed(2)}`
+    + (PICKS.length ? ` · odds ${new Date(window.__at || Date.now()).toLocaleTimeString()}` : "");
+}
+
+async function placeOrder(r, btn, cell) {
+  const p = params();
+  const live = $("liveToggle").checked && LIVE_ENABLED;
+  if (live && !confirm(`PLACE REAL ORDER\n\n${r.title}\n${r.marketLabel} / ${r.selectionLabel}\nfair ${(r.fairProb*100).toFixed(1)}%  ·  EV +${(r.ev*100).toFixed(1)}%\n\nThis commits real funds. Continue?`)) return;
+  btn.disabled = true; cell.textContent = live ? "placing…" : "sizing…"; cell.className = "result";
+  try {
+    const resp = await fetch("/api/order", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pmTokenId: r.pmTokenId, pmOdds: r.pmOdds, fairProb: r.fairProb,
+        bankroll: p.bankroll, kellyMult: p.kellyMult, maxStake: p.maxStake, maxExposure: p.maxExposure, spent: 0,
+        requiredEdge: p.reqEdge, live }) });
+    const d = await resp.json();
+    if (d.ok && d.dryRun) { cell.className = "result ok"; cell.textContent = `dry-run: buy ${d.shares} sh @ ${(d.price*100).toFixed(1)}¢ ≈ $${d.cost.toFixed(2)}`; }
+    else if (d.ok) { cell.className = "result ok"; cell.textContent = `✅ ${d.shares} sh @ ${(d.limit*100).toFixed(1)}¢ ($${d.cost.toFixed(2)})`; }
+    else { cell.className = "result err"; cell.textContent = "✕ " + (d.status || "failed"); }
+  } catch (e) { cell.className = "result err"; cell.textContent = "✕ " + e.message; }
+  btn.disabled = false;
+}
+
+async function loadPicks(refresh) {
+  $("status").textContent = refresh ? "refreshing odds (re-pulling Polymarket + Norsk Tipping, ~1–2 min)…" : "loading…";
+  $("refreshBtn").disabled = true; $("reloadBtn").disabled = true;
+  try {
+    const resp = await fetch(refresh ? "/api/refresh" : "/api/picks", { method: refresh ? "POST" : "GET" });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    PICKS = d.top || []; window.__at = d.at; if ("liveEnabled" in d) setLiveEnabled(d.liveEnabled);
+    render();
+  } catch (e) { $("status").textContent = "error: " + e.message; }
+  $("refreshBtn").disabled = false; $("reloadBtn").disabled = false;
+}
+
+function setLiveEnabled(on) {
+  LIVE_ENABLED = on;
+  $("liveDisabledBanner").style.display = on ? "none" : "block";
+  $("liveToggle").disabled = !on;
+  if (!on) $("liveToggle").checked = false;
+  updateLiveLabel();
+}
+function updateLiveLabel() {
+  const on = $("liveToggle").checked && LIVE_ENABLED;
+  $("liveLabel").textContent = on ? "LIVE: ARMED" : "LIVE: off";
+  $("liveStatus").textContent = on ? "orders commit real funds" : "dry-run — nothing is placed";
+  $("liveWrap").classList.toggle("live-on", on);
+}
+
+["bankroll","kelly","maxStake","maxExposure","minEv","minConf","reqEdge"].forEach((id) => $(id).addEventListener("input", render));
+$("refreshBtn").onclick = () => loadPicks(true);
+$("reloadBtn").onclick = () => loadPicks(false);
+$("liveToggle").addEventListener("change", updateLiveLabel);
+loadPicks(false);
+</script>
+</body>
+</html>
