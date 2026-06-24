@@ -21,6 +21,7 @@ import {
 } from "../src/sources/polymarket/gamma.js";
 import { generateNorskTippingMarkets } from "../src/sources/norsktipping/mock.js";
 import { compareMarkets } from "../src/compare/compare.js";
+import { shinProbabilities, shinZ } from "../src/normalize/shin.js";
 import { buildOrientation } from "../src/sources/norsktipping/oddsen.js";
 import type { MatchMeta, TeamInfo } from "../src/types.js";
 
@@ -295,6 +296,27 @@ test("buildOrientation realigns Norsk Tipping's reversed home/away", () => {
   assert.equal(aligned.flip, false);
   assert.equal(aligned.sideForName("Brazil"), "HOME");
   assert.equal(aligned.sideForName("Haiti"), "AWAY");
+});
+
+test("Shin de-vig: symmetric market stays 50/50 and sums to 1", () => {
+  const p = shinProbabilities([1.85, 1.85]);
+  assert.ok(Math.abs(p[0]! - 0.5) < 1e-6 && Math.abs(p[1]! - 0.5) < 1e-6);
+  assert.ok(Math.abs(p[0]! + p[1]! - 1) < 1e-9);
+  assert.ok(shinZ([1.85, 1.85]) > 0); // some implied margin/insider share
+});
+
+test("Shin de-vig: sums to 1, preserves order, corrects favourite-longshot vs proportional", () => {
+  const odds = [4.2, 3.7, 1.95];
+  const p = shinProbabilities(odds);
+  assert.ok(Math.abs(p.reduce((a, b) => a + b, 0) - 1) < 1e-9, "must sum to 1");
+  assert.ok(p[2]! > p[1]! && p[1]! > p[0]!, "shorter odds → higher prob");
+  // proportional (multiplicative) de-vig for comparison
+  const inv = odds.map((o) => 1 / o);
+  const B = inv.reduce((a, b) => a + b, 0);
+  const prop = inv.map((x) => x / B);
+  // Shin strips relatively more margin from the longshot than proportional does.
+  assert.ok(p[0]! < prop[0]!, "longshot lower under Shin");
+  assert.ok(p[2]! > prop[2]!, "favourite higher under Shin");
 });
 
 test("matchCore + sameMatch group a match's sibling events but exclude others", () => {
