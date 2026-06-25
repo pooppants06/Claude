@@ -110,8 +110,18 @@ async function run() {
   const oaIdx = loadOA();
   const slate = JSON.parse(readFileSync("/tmp/multi/slate.json", "utf8"));
   const slugs: string[] = slate.map((s: any) => s.slug);
-  const out: any[] = [];
-  for (const s of slugs) { try { out.push(await one(s, oaIdx)); } catch (e) { console.log("FAIL", s, (e as Error).message); } }
+  // Process matches with bounded concurrency (PM merges ~6 sibling events each).
+  const results: any[] = [];
+  let i = 0;
+  async function worker() {
+    while (i < slugs.length) {
+      const idx = i++;
+      try { results[idx] = await one(slugs[idx]!, oaIdx); }
+      catch (e) { console.log("FAIL", slugs[idx], (e as Error).message); results[idx] = null; }
+    }
+  }
+  await Promise.all(Array.from({ length: 5 }, () => worker()));
+  const out = results.filter(Boolean);
   writeFileSync("/tmp/multi/compare5.json", JSON.stringify({ at: Date.now(), matches: out }, null, 2));
   for (const m of out) console.log(`${m.title} (${m.date}) — ${m.rows.length} rows`);
 }

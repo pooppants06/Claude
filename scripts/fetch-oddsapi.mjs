@@ -20,6 +20,7 @@ const KEY = process.env.ODDS_API_KEY;
 if (!KEY) { console.error("Set ODDS_API_KEY in the environment."); process.exit(1); }
 const SPORT = "soccer_fifa_world_cup";
 const REGIONS = process.env.OA_REGIONS ?? "eu,uk";
+const EVENT_MARKETS = process.env.OA_EVENT_MARKETS ?? "alternate_totals,btts,h2h_h1,totals_h1";
 const SLATE = process.env.SLATE_PATH ?? "/tmp/multi/slate.json";
 
 // Fold spelling differences so Odds-API team names line up with Polymarket's.
@@ -49,7 +50,7 @@ mkdirSync("/tmp/oa5_ev", { recursive: true });
 let rem = bulk.rem;
 for (const e of pick) {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const pe = await gj(`https://api.the-odds-api.com/v4/sports/${SPORT}/events/${e.id}/odds?apiKey=${KEY}&regions=${REGIONS}&markets=alternate_totals,btts,h2h_h1,totals_h1&oddsFormat=decimal`);
+    const pe = await gj(`https://api.the-odds-api.com/v4/sports/${SPORT}/events/${e.id}/odds?apiKey=${KEY}&regions=${REGIONS}&markets=${EVENT_MARKETS}&oddsFormat=decimal`);
     if (pe.ok) { writeFileSync(`/tmp/oa5_ev/${e.id}.json`, JSON.stringify(pe.body)); rem = pe.rem; break; }
     if (attempt === 2) console.log(`  per-event FAIL ${e.id} ${pe.status}`); // transient proxy 403s happen; 3 tries
   }
