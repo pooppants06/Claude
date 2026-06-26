@@ -25,7 +25,7 @@ const SLATE = process.env.SLATE_PATH ?? "/tmp/multi/slate.json";
 
 // Fold spelling differences so Odds-API team names line up with Polymarket's.
 const norm = (s) => s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z]/g, "");
-const ALIAS = { turkey: "turkiye", unitedstates: "usa", czechrepublic: "czechia", ivorycoast: "cotedivoire", bosniaherzegovina: "bosnia", korearepublic: "southkorea" };
+const ALIAS = { turkey: "turkiye", unitedstates: "usa", czechrepublic: "czechia", ivorycoast: "cotedivoire", bosniaherzegovina: "bosnia", korearepublic: "southkorea", capeverde: "caboverde", iriran: "iran", iran: "iran" };
 const k = (s) => { const x = norm(s); return ALIAS[x] ?? x; };
 
 const slate = JSON.parse(readFileSync(SLATE, "utf8"));

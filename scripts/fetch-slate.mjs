@@ -36,7 +36,19 @@ for (const e of b) {
   rows.push({ slug: e.slug, gst, home: (t[0] || "").trim(), away: (t[1] || "").trim(), title: e.title });
 }
 rows.sort((a, b) => String(a.gst).localeCompare(String(b.gst)));
-const next = rows.filter((r) => r.gst >= CUTOFF).slice(0, N);
+const upcoming = rows.filter((r) => r.gst >= CUTOFF);
+
+let next;
+const WINDOW_HOURS = Number(process.env.WINDOW_HOURS ?? "0");
+if (WINDOW_HOURS > 0 && upcoming.length) {
+  // All matches kicking off within WINDOW_HOURS of the soonest upcoming one.
+  const parse = (g) => Date.parse(String(g).replace(" ", "T").replace(/\+00$/, "+00:00"));
+  const start = parse(upcoming[0].gst);
+  const end = start + WINDOW_HOURS * 3600 * 1000;
+  next = upcoming.filter((r) => { const t = parse(r.gst); return t >= start && t < end; });
+} else {
+  next = upcoming.slice(0, N);
+}
 
 mkdirSync(OUT.replace(/\/[^/]+$/, ""), { recursive: true });
 writeFileSync(OUT, JSON.stringify(next, null, 2));

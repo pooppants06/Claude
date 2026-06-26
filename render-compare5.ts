@@ -8,9 +8,16 @@ const od = (v: number | null) => (v != null ? v.toFixed(2) : "—");
 function rowsHtml(rows: any[]) {
   // Sort each match's selections by EV (highest value first); rows with no
   // OA-Shin (no EV) fall to the bottom. Market shown on every row now.
-  const withEv = rows.map((r) => ({ ...r, ev: r.pm > 1 && r.oaShin > 1 ? r.pm / r.oaShin - 1 : null }));
+  // Quarantine PM-vs-consensus inversions (>25pp gap = data error) and illiquid
+  // PM prices (bid/ask spread > 8¢ = unreliable midpoint) from the EV ranking.
+  const clean = rows.filter((r) =>
+    !(r.pm > 1 && r.oaShin > 1 && Math.abs(1 / r.pm - 1 / r.oaShin) > 0.25) &&
+    !(r.pmSpread != null && r.pmSpread > 0.08));
+  const withEv = clean.map((r) => ({ ...r, ev: r.pm > 1 && r.oaShin > 1 ? r.pm / r.oaShin - 1 : null }));
   withEv.sort((a, b) => (b.ev ?? -Infinity) - (a.ev ?? -Infinity));
-  return withEv.map((r) => {
+  const TOP = Number(process.env.TOP ?? "0");
+  const shown = TOP > 0 ? withEv.slice(0, TOP) : withEv;
+  return shown.map((r) => {
     const spr = r.pmSpread != null ? (r.pmSpread * 100).toFixed(1) + "¢" : "—";
     const oa = r.oaShin != null ? `${od(r.oaShin)}<span class="bk"> ${r.oaBooks}bk</span>` : "—";
     const evCell = r.ev == null ? "—" : `${r.ev >= 0 ? "+" : ""}${(r.ev * 100).toFixed(1)}%`;
