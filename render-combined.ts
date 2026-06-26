@@ -66,6 +66,9 @@ const lists = [
   { file: "/tmp/multi/next24_top20_under11.png", title: "Next 24h — Top 20 highest-edge bets · odds under 11 (chance > 9%)",
     sub: "Restricted to Polymarket odds below 11.0 — strips out deep-longshot noise, leaving the more reliable edges.",
     rows: all.filter((r) => r.pm < 11).slice(0, 20) },
+  { file: "/tmp/multi/next24_top20_under15.png", title: "Next 24h — Top 20 highest-edge bets · odds under 15 (chance > 6.7%)",
+    sub: "Restricted to Polymarket odds below 15.0 — a slightly wider net than the under-11 list.",
+    rows: all.filter((r) => r.pm < 15).slice(0, 20) },
 ];
 
 (async () => {
