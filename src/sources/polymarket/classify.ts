@@ -220,6 +220,16 @@ export function classifyPolymarketMarket(
   const tokens = parseJsonArray(raw.clobTokenIds);
   if (outcomes.length === 0) return [];
 
+  // Guard against market-type collisions: corners, cards, player props etc. use
+  // the same "O/U <line>" Over/Under shape and carry a numeric line, so they get
+  // misclassified as match TOTAL_GOALS and overwrite the real goals line on the
+  // shared canonical key (e.g. "Total Corners: O/U 8.5" → TOTAL_GOALS@8.5, or a
+  // "Player: 4+ goals+assists" prop → TOTAL_GOALS@3.5). None of these are markets
+  // we compare, so drop them by their authoritative sportsMarketType.
+  const smt = (raw.sportsMarketType ?? "").toLowerCase();
+  if (/corner|card|booking|player|assist|_shot|shots|save|foul|offside|tackle|pass/.test(smt))
+    return [];
+
   // Order-book spread for this market: prefer Gamma's `spread` field, else
   // derive from best bid/ask. Same for every leg of the (binary) market.
   const bid = toNum(raw.bestBid);

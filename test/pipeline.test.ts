@@ -85,6 +85,29 @@ test("classifies a binary Over/Under totals market with a line", () => {
   assert.deepEqual(sels.map((s) => s.selectionKey).sort(), ["OVER", "UNDER"]);
 });
 
+test("does NOT classify corners / player-prop O/U markets as match TOTAL_GOALS", () => {
+  // These carry the same "O/U <line>" shape + a numeric line, so without the
+  // sportsMarketType guard they collide with real goals totals and overwrite them.
+  const corners: RawPolymarketMarket = {
+    groupItemTitle: "Total Corners: O/U 8.5",
+    sportsMarketType: "total_corners",
+    line: 8.5,
+    outcomes: JSON.stringify(["Over", "Under"]),
+    outcomePrices: JSON.stringify(["0.385", "0.615"]),
+    clobTokenIds: JSON.stringify(["c-over", "c-under"]),
+  };
+  const prop: RawPolymarketMarket = {
+    groupItemTitle: "Jordy Caicedo: 4+ goals + assists",
+    sportsMarketType: "soccer_player_goals_plus_assists",
+    line: 3.5,
+    outcomes: JSON.stringify(["Over", "Under"]),
+    outcomePrices: JSON.stringify(["0.47", "0.53"]),
+    clobTokenIds: JSON.stringify(["p-over", "p-under"]),
+  };
+  assert.deepEqual(classifyPolymarketMarket(corners, teams), []);
+  assert.deepEqual(classifyPolymarketMarket(prop, teams), []);
+});
+
 test("buildPolymarketMarkets merges binary team-to-win sub-markets into one 1X2", () => {
   const raw: RawPolymarketMarket[] = [
     {

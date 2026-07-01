@@ -16,7 +16,8 @@ import { writeFileSync, mkdirSync } from "node:fs";
 
 const TAG_FIFA_WC = 102232;
 const N = Number(process.env.N ?? "5");
-const CUTOFF = process.env.CUTOFF ?? "2026-06-24";
+// Default cutoff = today (UTC). Only override via CUTOFF for backfills/testing.
+const CUTOFF = process.env.CUTOFF ?? new Date().toISOString().slice(0, 10);
 const OUT = process.env.SLATE_PATH ?? "/tmp/multi/slate.json";
 
 async function gj(u) { const r = await fetch(u, { headers: { accept: "application/json" } }); return r.ok ? r.json() : null; }
