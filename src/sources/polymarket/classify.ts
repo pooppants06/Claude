@@ -229,6 +229,12 @@ export function classifyPolymarketMarket(
   const smt = (raw.sportsMarketType ?? "").toLowerCase();
   if (/corner|card|booking|player|assist|_shot|shots|save|foul|offside|tackle|pass/.test(smt))
     return [];
+  // Knockout-only markets that look like a match result but aren't the 90-min
+  // 1X2: "Team to Advance" / "to qualify" resolve on progression (incl. ET/pens),
+  // so a losing side can sit at 23% to advance while its 90-min moneyline is 10%.
+  // These were overwriting the real moneyline on the MATCH_WINNER key.
+  if (/advance|qualif|progress|to_reach/.test(smt))
+    return [];
 
   // Order-book spread for this market: prefer Gamma's `spread` field, else
   // derive from best bid/ask. Same for every leg of the (binary) market.
