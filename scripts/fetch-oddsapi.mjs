@@ -18,14 +18,14 @@ import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 
 const KEY = process.env.ODDS_API_KEY;
 if (!KEY) { console.error("Set ODDS_API_KEY in the environment."); process.exit(1); }
-const SPORT = "soccer_fifa_world_cup";
+const SPORT = process.env.OA_SPORT ?? "soccer_fifa_world_cup";
 const REGIONS = process.env.OA_REGIONS ?? "eu,uk";
 const EVENT_MARKETS = process.env.OA_EVENT_MARKETS ?? "alternate_totals,btts,h2h_h1,totals_h1";
 const SLATE = process.env.SLATE_PATH ?? "/tmp/multi/slate.json";
 
 // Fold spelling differences so Odds-API team names line up with Polymarket's.
 const norm = (s) => s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z]/g, "");
-const ALIAS = { turkey: "turkiye", unitedstates: "usa", czechrepublic: "czechia", ivorycoast: "cotedivoire", bosniaherzegovina: "bosnia", korearepublic: "southkorea", capeverde: "caboverde", iriran: "iran", iran: "iran" };
+const ALIAS = { turkey: "turkiye", unitedstates: "usa", czechrepublic: "czechia", ivorycoast: "cotedivoire", bosniaherzegovina: "bosnia", korearepublic: "southkorea", capeverde: "caboverde", iriran: "iran", iran: "iran", qairatfk: "kairat", fckairat: "kairat", qairat: "kairat" };
 const k = (s) => { const x = norm(s); return ALIAS[x] ?? x; };
 
 const slate = JSON.parse(readFileSync(SLATE, "utf8"));
