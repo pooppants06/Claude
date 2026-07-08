@@ -37,8 +37,13 @@ async function gj(u) { const r = await fetch(u); return { ok: r.ok, status: r.st
 const bulk = await gj(`https://api.the-odds-api.com/v4/sports/${SPORT}/odds?apiKey=${KEY}&regions=${REGIONS}&markets=h2h,totals&oddsFormat=decimal`);
 if (!bulk.ok) { console.error("bulk FAIL", bulk.status, String(bulk.body).slice(0, 200)); process.exit(1); }
 
-const pick = bulk.body.filter((e) => want.includes([k(e.home_team), k(e.away_team)].sort().join("|")));
-console.log(`bulk: ${bulk.body.length} events, matched ${pick.length}/${slate.length}, quota ${bulk.rem}`);
+// OA_NO_FILTER=1 keeps every event in the sport and defers team matching to the
+// consumer (compare5's fuzzy containment match) — use when the slate's names
+// don't align cleanly with the feed (obscure clubs, transliterations).
+const pick = process.env.OA_NO_FILTER
+  ? bulk.body
+  : bulk.body.filter((e) => want.includes([k(e.home_team), k(e.away_team)].sort().join("|")));
+console.log(`bulk: ${bulk.body.length} events, kept ${pick.length}/${slate.length}, quota ${bulk.rem}`);
 pick.forEach((e) => console.log(`  ${e.id}  ${e.home_team} vs ${e.away_team}  ${e.bookmakers.length}bk`));
 const missing = want.filter((w) => !pick.some((e) => [k(e.home_team), k(e.away_team)].sort().join("|") === w));
 if (missing.length) console.log("  MISSING:", missing.join("  "));

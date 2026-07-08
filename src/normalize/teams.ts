@@ -121,6 +121,7 @@ const TEAM_ALIASES: Record<string, string> = {
   unitedstates: "usa",
   hercegovina: "bosnia", bosniahercegovina: "bosnia", bosniaherzegovina: "bosnia",
   qairat: "kairat", // Kazakh club: Q/K transliteration (Polymarket "Qairat" vs books "Kairat")
+  mlviciebsk: "vitebsk", viciebsk: "vitebsk", // Belarusian club: Viciebsk (BE) vs Vitebsk (RU)
 };
 
 /**

@@ -42,15 +42,23 @@ function buildEventOA(books: any[], home: string, away: string) {
   return out;
 }
 
-function loadOA() {
+// Loose team match: equal, or one normalized name contains the other. Handles
+// club prefixes/suffixes that differ across sources (SK/FC Iberia, Egnatia vs
+// Egnatia Rrogozhinë, Craiova vs Craiova CS) without a per-club alias each.
+const tmatch = (a: string, b: string) =>
+  !!a && !!b && (a === b || (a.length >= 4 && b.length >= 4 && (a.includes(b) || b.includes(a))));
+
+function loadOA(): any[] {
   const bulk = JSON.parse(readFileSync("/tmp/oa5_bulk.json", "utf8"));
-  const byPair: Record<string, any> = {};
-  for (const e of bulk) {
+  return bulk.map((e: any) => {
     let books = [...(e.bookmakers || [])];
     if (existsSync(`/tmp/oa5_ev/${e.id}.json`)) books = books.concat(JSON.parse(readFileSync(`/tmp/oa5_ev/${e.id}.json`, "utf8")).bookmakers || []);
-    byPair[pairKey(e.home_team, e.away_team)] = { home: e.home_team, away: e.away_team, oa: buildEventOA(books, e.home_team, e.away_team) };
-  }
-  return byPair;
+    return { home: e.home_team, away: e.away_team, hk: norm(e.home_team), ak: norm(e.away_team), oa: buildEventOA(books, e.home_team, e.away_team) };
+  });
+}
+function findOA(oaList: any[], home: string, away: string) {
+  const ph = norm(home), pa = norm(away);
+  return oaList.find((o) => (tmatch(o.hk, ph) && tmatch(o.ak, pa)) || (tmatch(o.hk, pa) && tmatch(o.ak, ph)));
 }
 
 // Display order + which markets to include.
@@ -62,14 +70,14 @@ function sortKey(m: any): number {
 }
 const INCLUDE = new Set(["MATCH_WINNER", "DOUBLE_CHANCE", "TOTAL_GOALS", "BTTS"]);
 
-async function one(slug: string, oaIdx: Record<string, any>) {
+async function one(slug: string, oaList: any[]) {
   const ev: any = await fetchPolymarketEvent(`https://polymarket.com/sports/world-cup/${slug}`);
   let nt: any = []; try { nt = await fetchNorskTippingOddsen(ev.meta); } catch { nt = []; }
   const snap = compareMarkets(ev.meta, [{ source: "polymarket", markets: ev.markets, status: "live" }, { source: "norsktipping", markets: nt, status: "live" }], { polymarket: "live", norsktipping: "live" });
-  const oaEv = oaIdx[pairKey(ev.meta.teams.home, ev.meta.teams.away)];
+  const oaEv = findOA(oaList, ev.meta.teams.home, ev.meta.teams.away);
   const oaH = oaEv ? norm(oaEv.home) : "", oaA = oaEv ? norm(oaEv.away) : "";
   const oaKey = (mKey: string, s: any): string | null => {
-    if (mKey.startsWith("MATCH_WINNER")) { if (s.key === "DRAW") return "DRAW"; const k = norm(s.label); return k === oaH ? "HOME" : k === oaA ? "AWAY" : null; }
+    if (mKey.startsWith("MATCH_WINNER")) { if (s.key === "DRAW") return "DRAW"; const k = norm(s.label); return tmatch(k, oaH) ? "HOME" : tmatch(k, oaA) ? "AWAY" : null; }
     return s.key;
   };
 
