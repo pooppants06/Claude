@@ -91,6 +91,7 @@ async function one(slug: string, oaIdx: Record<string, any>) {
       rows.push({
         market: m.label, selection: s.label,
         pm, pmSpread: s.quotes.polymarket?.meta?.spread ?? null,
+        pmTokenId: s.quotes.polymarket?.meta?.tokenId ?? null,
         oaShin: oaCell ? oaCell.shinOdds : null, oaBooks: oaCell ? oaCell.n : null,
         nt: ntDec[i] && ntDec[i] > 1 ? ntDec[i] : null,
         ntShin: ntShin ? 1 / ntShin[i]! : null,
@@ -103,6 +104,31 @@ async function one(slug: string, oaIdx: Record<string, any>) {
       if (rows[start]) rows[start].firstInMarket = true;
     }
   }
+  // Executable Polymarket prices per selection from the live CLOB book:
+  //   ask = what you pay buying at market NOW; bid = the highest resting limit
+  //   (join it and you're first in queue if it fills). Mid overstates both.
+  const priced = rows.filter((r) => r.pmTokenId);
+  await Promise.all(priced.map(async (r) => {
+    const px = async (side: string) => {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const resp = await fetch(`https://clob.polymarket.com/price?token_id=${r.pmTokenId}&side=${side}`);
+          if (resp.ok) {
+            const v = Number((await resp.json())?.price);
+            return v > 0 && v < 1 ? v : null;
+          }
+        } catch { /* transient proxy failure — retry */ }
+        await new Promise((res) => setTimeout(res, 400 * (attempt + 1)));
+      }
+      return null;
+    };
+    // CLOB /price semantics: side=buy → best resting BUY order (bid);
+    // side=sell → best resting SELL order (ask). So taking the market pays
+    // the side=sell price, and posting a limit joins the side=buy price.
+    const [bid, ask] = await Promise.all([px("buy"), px("sell")]);
+    r.pmAskOdds = ask ? 1 / ask : null; // buy at market (take the ask)
+    r.pmBidOdds = bid ? 1 / bid : null; // buy at highest resting limit (join the bid)
+  }));
   return { title: ev.meta.title, slug, date: slug.match(/(\d{4}-\d{2}-\d{2})$/)?.[1] ?? "", rows };
 }
 

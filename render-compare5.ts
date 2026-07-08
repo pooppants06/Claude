@@ -22,10 +22,19 @@ function rowsHtml(rows: any[]) {
     const oa = r.oaShin != null ? `${od(r.oaShin)}<span class="bk"> ${r.oaBooks}bk</span>` : "—";
     const evCell = r.ev == null ? "—" : `${r.ev >= 0 ? "+" : ""}${(r.ev * 100).toFixed(1)}%`;
     const evCls = r.ev == null ? "" : r.ev > 0 ? "evpos" : "evneg";
+    // Executable views: EV re-computed at the price you'd actually get.
+    const exec = (odds: number | null) => {
+      if (!(odds && odds > 1)) return `<td class="num">—</td>`;
+      if (!(r.oaShin > 1)) return `<td class="num">${od(odds)}</td>`;
+      const e = odds / r.oaShin - 1;
+      return `<td class="num ${e > 0 ? "evpos" : "evneg"}">${od(odds)} <span class="subev">${e >= 0 ? "+" : ""}${(e * 100).toFixed(1)}%</span></td>`;
+    };
     return `<tr>
       <td class="mkt">${r.market}</td>
       <td class="sel">${r.selection}</td>
       <td class="num pm">${od(r.pm)}</td>
+      ${exec(r.pmAskOdds ?? null)}
+      ${exec(r.pmBidOdds ?? null)}
       <td class="num oa">${oa}</td>
       <td class="num">${od(r.nt)}</td>
       <td class="num ntsh">${od(r.ntShin)}</td>
@@ -57,17 +66,19 @@ function page(m: any) {
   .sprd{color:#6e7681;font-size:12px}
   .evpos{color:#3fb950;font-weight:700}
   .evneg{color:#6e7681}
+  .subev{font-size:10.5px;font-weight:600}
   .bk{color:#56616b;font-size:10.5px;font-weight:400}
   thead th.pmh{color:#79c0ff}thead th.oah{color:#f0883e}thead th.nsh{color:#7ee787}thead th.evh{color:#3fb950}
   </style></head><body>
   <h1>${m.title}</h1>
   <div class="sub">FIFA World Cup 2026 · kickoff ${m.date} · Polymarket vs. Odds-API (Shin) vs. Norsk Tipping</div>
-  <div class="leg"><b>PM</b> Polymarket decimal odds · <b>OA-Shin</b> Odds-API average of all books, de-vigged (Shin) + book count · <b>NT</b> Norsk Tipping raw · <b>NT-Shin</b> Norsk Tipping de-vigged (Shin) · <b>Spread</b> Polymarket order-book bid/ask spread · <b>EV</b> = PM ÷ OA-Shin − 1 (edge backing on Polymarket if OA-Shin is the true price).</div>
+  <div class="leg"><b>PM Mid</b> Polymarket midpoint odds · <b>Mkt Buy</b> odds buying NOW at the best ask (+EV at that price) · <b>Limit Buy</b> odds if filled at the best resting bid (+EV) · <b>OA-Shin</b> Odds-API average of all books, de-vigged (Shin) + book count · <b>NT</b> Norsk Tipping raw · <b>NT-Shin</b> NT de-vigged (Shin) · <b>Spread</b> PM bid/ask spread · <b>EV (mid)</b> = PM Mid ÷ OA-Shin − 1.</div>
   <table>
   <thead><tr>
     <th>Market</th><th>Selection</th>
-    <th class="num pmh">PM</th><th class="num oah">OA-Shin</th>
-    <th class="num">NT</th><th class="num nsh">NT-Shin</th><th class="num">Spread</th><th class="num evh">EV</th>
+    <th class="num pmh">PM Mid</th><th class="num pmh">Mkt Buy</th><th class="num pmh">Limit Buy</th>
+    <th class="num oah">OA-Shin</th>
+    <th class="num">NT</th><th class="num nsh">NT-Shin</th><th class="num">Spread</th><th class="num evh">EV (mid)</th>
   </tr></thead>
   <tbody>${rowsHtml(m.rows)}</tbody></table></body></html>`;
 }
@@ -78,7 +89,7 @@ function page(m: any) {
   for (const [i, m] of d.matches.entries()) {
     const file = `/tmp/multi/cmp5_${i + 1}.png`;
     const pg = await browser.newPage();
-    await pg.setViewport({ width: 1090, height: 900, deviceScaleFactor: 2 });
+    await pg.setViewport({ width: 1340, height: 900, deviceScaleFactor: 2 });
     await pg.setContent(page(m), { waitUntil: "networkidle0" });
     const el = await pg.$("body");
     await el!.screenshot({ path: file });
