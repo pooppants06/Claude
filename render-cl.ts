@@ -16,7 +16,7 @@ for (const m of d.matches) {
   }
 }
 all.sort((a, b) => b.evMkt - a.evMkt);
-const rows = all.slice(0, 32);
+const rows = all.slice(0, Number(process.env.CL_TOP ?? "20"));
 
 const od = (v: number | null) => (v != null && v > 0 ? v.toFixed(2) : "—");
 const shortMatch = (t: string) => t.replace(/\s*FK$| FC$|^FC | FK | SK | KF | CS$/g, "").replace(/vs\./, "v").slice(0, 34);

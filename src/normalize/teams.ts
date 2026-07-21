@@ -122,6 +122,8 @@ const TEAM_ALIASES: Record<string, string> = {
   hercegovina: "bosnia", bosniahercegovina: "bosnia", bosniaherzegovina: "bosnia",
   qairat: "kairat", // Kazakh club: Q/K transliteration (Polymarket "Qairat" vs books "Kairat")
   mlviciebsk: "vitebsk", viciebsk: "vitebsk", // Belarusian club: Viciebsk (BE) vs Vitebsk (RU)
+  ki: "klaksvik",           // Faroese KÍ = Klaksvíkar Ítróttarfelag
+  crvenazvezda: "redstar",  // Serbian Crvena zvezda = Red Star Belgrade
 };
 
 /**
@@ -139,7 +141,7 @@ export function normalizeKey(name: string): string {
     // Drop noise words and connectors so spellings like "Bosnia and Herzegovina"
     // and "Bosnia-Herzegovina" collapse to the same key (otherwise a team-total
     // market can fail team detection and leak into the full-match total).
-    .replace(/\b(fc|fk|sc|cf|afc|the|and|og|und)\b/g, "")
+    .replace(/\b(fc|fk|kf|sk|sc|cf|afc|the|and|og|und)\b/g, "")
     .replace(/&/g, "")
     .replace(/[^a-z0-9]/g, "")
     .trim();
