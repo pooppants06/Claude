@@ -1,0 +1,15 @@
+# Lokale innstillinger og hemmeligheter
+config.toml
+stores.local.toml
+
+# Kjøredata
+state.json
+state.json.corrupt
+.state-*.tmp
+history.jsonl
+monitor.log*
+
+# Python
+.venv/
+__pycache__/
+*.pyc

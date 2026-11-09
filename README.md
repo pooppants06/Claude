@@ -198,4 +198,11 @@ needed). The same summary is printed to the terminal on every match load.
   several "Norsk Tipping only" rows; that's expected and handled.
 - The `mock`/`demo` providers are clearly labelled in the UI (`sample (mock)`,
   `demo (offline)`) so synthetic data is never mistaken for live odds.
-```
+
+---
+
+## Also in this repo
+
+- [`ps5-pro-monitor/`](ps5-pro-monitor/) — **PS5 Pro-vakten**: a standalone Python program that
+  watches Norwegian retailers for PlayStation 5 Pro stock and price changes and notifies via
+  Discord/Telegram. Unrelated to OddsEdge; see its own README (Norwegian).
