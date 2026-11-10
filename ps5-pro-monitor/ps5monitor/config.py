@@ -33,6 +33,7 @@ class Store:
     aliases: list[str] = field(default_factory=list)
     interval: float | None = None
     link_regex: str | None = None
+    burst: bool = True  # la turbo-modus (tett sjekk ved endring) gjelde denne butikken
 
     def sku_from_url(self, url: str) -> str | None:
         if not self.sku_regex:
@@ -80,6 +81,14 @@ class Settings:
     heartbeat_url: str = ""
     heartbeat_interval_seconds: float = 300
     auto_discover: bool = True
+    # Proxy-liste: hvilken fil proxyene leses fra, og om egen IP skal brukes i tillegg.
+    proxies_file: str = "proxies.txt"
+    proxy_include_direct: bool = False
+    # Turbo: når kildekoden til en side endrer seg, sjekkes den tett en periode.
+    burst_enabled: bool = True
+    burst_interval_seconds: float = 20
+    burst_duration_seconds: float = 3600
+    burst_notify: bool = False
 
 
 @dataclass
@@ -115,6 +124,7 @@ class Config:
     exclude: str = DEFAULT_EXCLUDE
     stores: list[Store] = field(default_factory=list)
     aggregators: list[Aggregator] = field(default_factory=list)
+    proxies: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
     def __post_init__(self):
@@ -184,6 +194,37 @@ def _read_toml(path: Path) -> dict:
         return tomllib.load(fh)
 
 
+_PROXY_SCHEMES = ("http", "https", "socks5", "socks5h", "socks4")
+
+
+def _load_proxies(base: Path, filename: str, from_config: list, warnings: list[str]) -> list[str]:
+    """Slår sammen proxyer fra config, miljøvariabel (PS5_PROXIES) og en fil (én per linje)."""
+    raw = [str(p) for p in from_config]
+    env = os.environ.get("PS5_PROXIES", "").strip()
+    if env:
+        raw += re.split(r"[\s,]+", env)
+    path = (base / filename) if filename else None
+    if path and path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.split("#", 1)[0].strip()
+            if line:
+                raw.append(line)
+    out: list[str] = []
+    for proxy in raw:
+        proxy = proxy.strip()
+        if not proxy:
+            continue
+        if "://" not in proxy:  # «host:port» antas å være en http-proxy
+            proxy = "http://" + proxy
+        parts = urlsplit(proxy)
+        if parts.scheme not in _PROXY_SCHEMES or not parts.hostname:
+            warnings.append(f"Hopper over ugyldig proxy: {proxy!r}")
+            continue
+        if proxy not in out:
+            out.append(proxy)
+    return out
+
+
 def _load_stores(cfg: Config, data: dict) -> None:
     by_id = {s.id: s for s in cfg.stores}
     for raw in data.get("store", []):
@@ -193,7 +234,7 @@ def _load_stores(cfg: Config, data: dict) -> None:
             store = Store(id=sid, name=str(raw.get("name", sid)))
             by_id[sid] = store
             cfg.stores.append(store)
-        for key in ("name", "extractor", "sku_regex", "interval", "link_regex"):
+        for key in ("name", "extractor", "sku_regex", "interval", "link_regex", "burst"):
             if key in raw:
                 setattr(store, key, raw[key])
         for key in ("products", "listings", "aliases"):
@@ -238,9 +279,12 @@ def load_config(base_dir: str | os.PathLike | None = None,
         cfg.warnings.append(
             f"Fant ikke {cfg_file.name} – bruker standardverdier. Kopier config.example.toml "
             "til config.toml og legg inn Discord/Telegram for å få varsler.")
-    _fill(cfg.settings, data.get("monitor", {}), "monitor", cfg.warnings)
+    monitor_data = dict(data.get("monitor", {}))
+    proxy_list = monitor_data.pop("proxies", [])  # liste, ikke en skalar innstilling
+    _fill(cfg.settings, monitor_data, "monitor", cfg.warnings)
     _fill(cfg.discord, data.get("discord", {}), "discord", cfg.warnings)
     _fill(cfg.telegram, data.get("telegram", {}), "telegram", cfg.warnings)
+    cfg.proxies = _load_proxies(base, cfg.settings.proxies_file, proxy_list, cfg.warnings)
 
     # Miljøvariabler overstyrer, så hemmeligheter kan holdes utenfor filer.
     cfg.discord.webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", cfg.discord.webhook_url)
@@ -265,4 +309,6 @@ def load_config(base_dir: str | os.PathLike | None = None,
     s.confirmations = max(1, s.confirmations)
     s.interval_seconds = max(15.0, s.interval_seconds)
     s.host_min_delay_seconds = max(1.0, s.host_min_delay_seconds)
+    s.burst_interval_seconds = max(5.0, s.burst_interval_seconds)
+    s.burst_duration_seconds = min(max(60.0, s.burst_duration_seconds), 86400.0)
     return cfg

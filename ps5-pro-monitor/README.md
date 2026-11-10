@@ -54,6 +54,7 @@ Sjekk at varslingen virker med `start.bat test-notify`.
 | `start.bat status` | Viser sist lagrede status. |
 | `start.bat check <URL>` | Viser hva programmet klarer å lese ut av én side. Nyttig for nye butikker. |
 | `start.bat test-notify` | Sender et testvarsel. |
+| `start.bat proxies` | Tester proxyene i `proxies.txt` og viser utgående IP for hver. |
 
 **Starte automatisk med Windows:** trykk `Win + R`, skriv `shell:startup`, og legg en snarvei
 til `start.bat` i mappen som åpnes.
@@ -75,6 +76,23 @@ Kildene stemmer over resultatet. Varselet viser hvem som var enige, og sier fra 
 
 **Bekreftelse før varsel.** En endring må sees to ganger på rad (ny sjekk etter 20 sekunder)
 før den varsles, så et cache-blaff gir ikke falsk alarm.
+
+**Turbo ved endring i kildekoden.** Når den bekreftede statusen fra en sides kildekode endrer
+seg – lagerstatus, pris, eller bare at lagerantallet faller – går vakten i «turbo» og sjekker
+*den* siden tett (standard hvert 20. sekund) i en periode (standard 1 time). Slik mister du ikke
+et kort salgsvindu, og du fanger hele sekvensen under en slipp (flakking inn/ut, prisjusteringer,
+rask utsolgt igjen). Turbo bygger på den bekreftede statusen, så et cache-blaff som ikke
+bekreftes utløser den ikke. Styres med `burst_*` i `config.toml`, og kan skrus av per butikk med
+`burst = false` i `stores.toml`.
+
+**Proxy-liste for raskere oppdatering.** Legger du inn flere proxyer (i `proxies.txt`, én per
+linje, eller i `[monitor] proxies`), roterer hver forespørsel mellom dem. Takten håndheves per
+IP, så hver enkelt proxy holder seg høflig innenfor `host_min_delay`, mens samlet oppdatering går
+raskere jo flere proxyer du har – det er dette som lar turbo trygt sjekke tett. En proxy som blir
+avvist settes midlertidig på pause, så den ikke sinker resten. Uten proxyer virker alt som før,
+men da begrenser `host_min_delay` (per IP) hvor tett turbo kan gå. Test proxyene med
+`start.bat proxies` (viser utgående IP per proxy). Kopier `proxies.example.txt` til `proxies.txt`
+for å komme i gang. `proxies.txt` er unntatt fra git.
 
 **Prisjakt som sikkerhetsnett.** Tilbudslisten på Prisjakts PS5 Pro-side leses også. Den dekker
 butikker som ikke kan leses direkte og fanger opp nye butikker. Butikker som allerede overvåkes
@@ -145,12 +163,18 @@ Alt står forklart i `config.example.toml`. De viktigste:
 | `notify_sold_out` | true | Varsle når noe blir utsolgt. |
 | `daily_summary` | "08:00" | Daglig oppsummering. Tom streng slår den av. |
 | `mention` (Discord) | "" | Hvem som pinges ved «på lager». |
+| `burst_enabled` | true | Turbo-modus: sjekk tett når kildekoden endrer seg. |
+| `burst_interval_seconds` | 20 | Hvor tett en side sjekkes mens turbo er på. |
+| `burst_duration_seconds` | 3600 | Hvor lenge turbo varer (1 time). |
+| `proxies` / `proxies_file` | [] / `proxies.txt` | Proxy-liste for raskere, fordelt oppdatering. |
+| `proxy_include_direct` | false | Bruk egen IP i tillegg til proxyene. |
 
 Hold intervallet romslig. Butikkene tåler ikke masing, og for tette sjekker er den sikreste
 måten å bli stengt ute på.
 
 Discord-webhook og Telegram-token kan også gis som miljøvariabler:
-`DISCORD_WEBHOOK_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`.
+`DISCORD_WEBHOOK_URL`, `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`. Proxyer kan gis med
+`PS5_PROXIES` (adskilt med komma eller mellomrom).
 
 ## Filer
 
@@ -158,6 +182,7 @@ Discord-webhook og Telegram-token kan også gis som miljøvariabler:
 |---|---|
 | `config.toml` | Dine innstillinger og hemmeligheter (lages fra `config.example.toml`, ikke i git). |
 | `stores.toml` | Butikker og produktsider. |
+| `proxies.txt` | Valgfri proxy-liste (lages fra `proxies.example.txt`, ikke i git). |
 | `state.json` | Siste kjente status – gjør at endringer mens programmet var av også varsles. |
 | `history.jsonl` | Logg over alle endringer. |
 | `monitor.log` | Programlogg. |

@@ -1,6 +1,7 @@
 # Lokale innstillinger og hemmeligheter
 config.toml
 stores.local.toml
+proxies.txt
 
 # Kjøredata
 state.json

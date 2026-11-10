@@ -12,7 +12,7 @@ from pathlib import Path
 from . import __version__, notify
 from .config import Config, load_config
 from .extract import collect_signals, reconcile
-from .fetcher import Fetcher, host_of
+from .fetcher import Fetcher, host_of, proxy_label
 from .models import Availability, format_price
 from .monitor import Monitor
 from .state import State
@@ -43,7 +43,10 @@ def _setup_logging(base: Path, verbose: bool, to_file: bool) -> None:
 def _make_fetcher(cfg: Config) -> Fetcher:
     s = cfg.settings
     return Fetcher(user_agent=s.user_agent, timeout=s.timeout_seconds,
-                   host_min_delay=s.host_min_delay_seconds, respect_robots=s.respect_robots)
+                   host_min_delay=s.host_min_delay_seconds, respect_robots=s.respect_robots,
+                   proxies=cfg.proxies,
+                   include_direct=True if s.proxy_include_direct else None,
+                   warn=log.warning)
 
 
 def _table(items: list[dict], stores_down: dict[str, str]) -> str:
@@ -74,8 +77,14 @@ async def _cmd_run(cfg: Config) -> int:
     fetcher, notifier = _make_fetcher(cfg), notify.Notifier(cfg)
     monitor = Monitor(cfg, state, fetcher, notifier)
     channels = ", ".join(c.name for c in notifier.channels) or "ingen (kun logg)"
-    log.info("PS5 Pro-vakten %s – %d sider hos %d nettsteder. Varsling: %s", __version__,
-             len(monitor.targets), len({t.host for t in monitor.targets}), channels)
+    extras = []
+    if cfg.proxies:
+        extras.append(f"{len(cfg.proxies)} proxyer")
+    if cfg.settings.burst_enabled:
+        extras.append("turbo på")
+    tail = (" – " + ", ".join(extras)) if extras else ""
+    log.info("PS5 Pro-vakten %s – %d sider hos %d nettsteder. Varsling: %s%s", __version__,
+             len(monitor.targets), len({t.host for t in monitor.targets}), channels, tail)
     if not notifier.enabled:
         log.warning("Ingen varslingskanal er satt opp – endringer vises bare her i loggen.")
     try:
@@ -148,8 +157,34 @@ def _cmd_status(cfg: Config) -> int:
     state = State(cfg.state_path)
     down = {i.get("name", "?"): next(iter(i["failing"].values()))
             for i in state.stores.values() if i.get("failing")}
+    if cfg.proxies:
+        print(f"Proxyer konfigurert: {len(cfg.proxies)}  (kjør «proxies» for å teste dem)\n")
     print(_table(list(state.items.values()), down))
     return 0
+
+
+async def _cmd_proxies(cfg: Config) -> int:
+    """Tester hver proxy ved å hente egen utgående IP gjennom den."""
+    import httpx
+    if not cfg.proxies:
+        print("Ingen proxyer konfigurert. Legg dem i proxies.txt (én per linje) eller i "
+              "[monitor] proxies i config.toml.")
+        return 1
+    print(f"Tester {len(cfg.proxies)} proxy(er) mot https://api.ipify.org …\n")
+    ok = 0
+    for proxy in cfg.proxies:
+        label = proxy_label(proxy)
+        try:
+            async with httpx.AsyncClient(proxy=proxy, timeout=15,
+                                         headers={"User-Agent": cfg.settings.user_agent}) as c:
+                resp = await c.get("https://api.ipify.org")
+            resp.raise_for_status()
+            print(f"  ✅ {label:<28} utgående IP: {resp.text.strip()}")
+            ok += 1
+        except Exception as exc:
+            print(f"  ❌ {label:<28} {type(exc).__name__}: {str(exc)[:80]}")
+    print(f"\n{ok} av {len(cfg.proxies)} proxyer virker.")
+    return 0 if ok else 1
 
 
 async def _cmd_test_notify(cfg: Config) -> int:
@@ -190,6 +225,7 @@ def main(argv: list[str] | None = None) -> int:
     check.add_argument("--store", help="butikk-id fra stores.toml")
     sub.add_parser("status", help="vis sist lagrede status")
     sub.add_parser("test-notify", help="send et testvarsel til Discord/Telegram")
+    sub.add_parser("proxies", help="test at proxyene i proxies.txt virker")
     args = parser.parse_args(argv)
     command = args.command or "run"
 
@@ -211,6 +247,8 @@ def main(argv: list[str] | None = None) -> int:
             return asyncio.run(_cmd_check(cfg, args.url, args.store))
         if command == "status":
             return _cmd_status(cfg)
+        if command == "proxies":
+            return asyncio.run(_cmd_proxies(cfg))
         return asyncio.run(_cmd_test_notify(cfg))
     except KeyboardInterrupt:
         print("\nStoppet.")

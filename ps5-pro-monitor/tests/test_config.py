@@ -141,5 +141,67 @@ products = ["https://min.example/ps5-pro"]
         self.assertEqual(cfg.store_for_shop("Elkjøp").id, "elkjop")
 
 
+import os
+from unittest import mock
+
+
+class ProxyBurstTest(unittest.TestCase):
+    def write(self, base, name, text):
+        (base / name).write_text(text, encoding="utf-8")
+
+    def test_proxies_from_config_file_and_env_are_merged_and_deduped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self.write(base, "config.toml", """
+[monitor]
+proxies = ["http://a:1", "b:2", "http://a:1"]
+burst_interval_seconds = 2
+burst_duration_seconds = 10
+proxy_include_direct = true
+""")
+            self.write(base, "proxies.txt", "# kommentar\nhttp://c:3\n\nhttp://a:1\n")
+            with mock.patch.dict(os.environ, {"PS5_PROXIES": "http://d:4 http://c:3"}):
+                cfg = load_config(base)
+            # config, så env, så fil – i den rekkefølgen, uten duplikater:
+            self.assertEqual(cfg.proxies,
+                             ["http://a:1", "http://b:2", "http://d:4", "http://c:3"])
+            self.assertTrue(cfg.settings.proxy_include_direct)
+            self.assertEqual(cfg.settings.burst_interval_seconds, 5)   # klemt opp til minimum
+            self.assertEqual(cfg.settings.burst_duration_seconds, 60)  # klemt opp til minimum
+
+    def test_invalid_proxy_is_skipped_with_warning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self.write(base, "config.toml", '[monitor]\nproxies = ["ftp://nope:1", "http://ok:8080"]\n')
+            cfg = load_config(base)
+            self.assertEqual(cfg.proxies, ["http://ok:8080"])
+            self.assertTrue(any("ugyldig proxy" in w for w in cfg.warnings))
+
+    def test_no_proxies_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = load_config(tmp)
+            self.assertEqual(cfg.proxies, [])
+            self.assertTrue(cfg.settings.burst_enabled)
+
+    def test_store_burst_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self.write(base, "stores.toml", """
+[[store]]
+id = "a"
+name = "A"
+burst = false
+products = ["https://a.test/ps5-pro"]
+[[store]]
+id = "b"
+name = "B"
+products = ["https://b.test/ps5-pro"]
+""")
+            cfg = load_config(base)
+            by_id = {s.id: s for s in cfg.stores}
+            self.assertFalse(by_id["a"].burst)
+            self.assertTrue(by_id["b"].burst)
+
+
 if __name__ == "__main__":
     unittest.main()

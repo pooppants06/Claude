@@ -37,9 +37,17 @@ listings = [
   "https://www.komplett.no/category/12769/gaming/konsoller/playstation",
 ]
 [store.markers]
-# En fangstgruppe (...) brukes som detaljtekst i varselet, f.eks. «50+ stk. på lager».
-in_stock = ['class="[^"]*\bstockstatus-instock"\s+title="Tilgjengelighet:\s*([^"]+)"', 'class="[^"]*\bstockstatus-instock\b']
-out_of_stock = ['class="stockstatus-stock-details">\s*Ikke p(?:å|&#xE5;) lager']
+# Komplett viser lager med web-komponenten <komplett-stock-icon color="..."> og speiler det
+# i innebygd JSON ("stockIcon":"InStock"/"OutOfStock"). En fangstgruppe (...) blir detaljtekst.
+in_stock = [
+  '<komplett-stock-icon color="green"[^>]*title="Tilgjengelighet:\s*([^"]+)"',
+  '"stockIcon"\s*:\s*"InStock"',
+]
+out_of_stock = [
+  '"stockIcon"\s*:\s*"OutOfStock"',
+  '<komplett-stock-icon color="red"',
+  'stockstatus-stock-details">\s*Ikke p(?:å|&#xE5;) lager',
+]
 
 [[store]]
 id = "power"

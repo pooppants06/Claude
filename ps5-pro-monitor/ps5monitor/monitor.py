@@ -36,6 +36,7 @@ class Target:
     checked: bool = False
     discovered: bool = False
     disabled: bool = False
+    burst_until: float = 0.0  # monotonic-tidspunkt turbo-modus varer til
 
     @property
     def host(self) -> str:
@@ -260,6 +261,44 @@ class Monitor:
             ok = False
         self._reschedule(target, ok, result)
 
+    def _effective_interval(self, target: Target) -> float:
+        """Sjekkintervallet akkurat nå – kortere mens turbo-modus er aktiv."""
+        if self.s.burst_enabled and target.burst_until > time.monotonic():
+            return max(5.0, min(self.s.burst_interval_seconds, target.interval))
+        return target.interval
+
+    def _enter_burst(self, target: Target) -> None:
+        """Går i turbo: sjekker denne siden tett en periode fordi kildekoden endret seg."""
+        if not self.s.burst_enabled:
+            return
+        if isinstance(target.owner, Store) and not target.owner.burst:
+            return
+        now = time.monotonic()
+        already = target.burst_until > now
+        target.burst_until = now + self.s.burst_duration_seconds
+        target.next_due = min(target.next_due, now + self._effective_interval(target))
+        if self._wake.get(target.host):
+            self._wake[target.host].set()
+        if not already:
+            minutes = max(1, int(self.s.burst_duration_seconds // 60))
+            log.info("Turbo på %s i ~%d min (kildekoden endret seg).", target.owner.name, minutes)
+            if self.s.burst_notify and not self.first_run:
+                self.notifier.post(notify.burst_message(target.owner.name, minutes))
+
+    def _note_change(self, target: Target, item: dict) -> None:
+        """Turbo når det bekreftede «fingeravtrykket» av kildedataene har endret seg.
+
+        Fingeravtrykket bygges på den lagrede (bekreftede) statusen, ikke på en enkelt
+        avlesning, så cache-blaff som ikke bekreftes utløser ikke turbo. Det fanger både
+        status- og prisendringer og rene detaljendringer (f.eks. at lagerantallet faller).
+        """
+        fp = "{}|{}|{}".format(item.get("availability"), item.get("price"),
+                               item.get("detail") or "")
+        previous = item.get("fingerprint")
+        item["fingerprint"] = fp
+        if previous is not None and previous != fp:
+            self._enter_burst(target)
+
     def _reschedule(self, target: Target, ok: bool, result: FetchResult) -> None:
         now = time.monotonic()
         if ok:
@@ -268,7 +307,7 @@ class Monitor:
                 target.next_due = now + self.s.confirm_delay_seconds
                 return
             jitter = 1 + self.rng.uniform(-self.s.jitter, self.s.jitter)
-            target.next_due = now + target.interval * jitter
+            target.next_due = now + self._effective_interval(target) * jitter
         else:
             target.fails += 1
             backoff = target.interval * (2 ** min(target.fails, 6))
@@ -329,6 +368,7 @@ class Monitor:
             return False
 
         sku = store.sku_from_url(target.url)
+        parsed = False  # sann bare når vi faktisk leste kildedataene (ikke død/videresendt side)
         if result.gone:
             obs = Observation(availability=Availability.DISCONTINUED,
                               detail=f"siden finnes ikke lenger (HTTP {result.status})")
@@ -343,6 +383,7 @@ class Monitor:
                 signals = collect_signals(result.text, extractor=store.extractor,
                                           markers=store.markers, sku=sku)
                 obs = reconcile(signals)
+                parsed = True
 
         if obs.availability is Availability.UNKNOWN and obs.price is None:
             reason = "fant verken pris eller lagerstatus i kildekoden (endret sideoppsett?)"
@@ -368,6 +409,8 @@ class Monitor:
         else:
             self._apply(item, obs)
         item["sku"] = obs.sku or sku or item.get("sku")
+        if parsed:
+            self._note_change(target, item)
         return True
 
     def _handle_redirect(self, target: Target, result: FetchResult, store: Store,
@@ -616,6 +659,9 @@ class Monitor:
             else:
                 item["covered"] = covered
                 self._apply(item, obs, silent=covered)
+            # Turbo på Prisjakt-siden når et tilbud vi ikke dekker direkte endrer seg.
+            if not covered:
+                self._note_change(target, item)
         # Tilbud som har forsvunnet fra listen regnes som utsolgt.
         for key, item in self.state.items.items():
             if key.startswith(prefix) and key not in seen and \
@@ -642,10 +688,16 @@ class Monitor:
         if command in ("/status", "/start"):
             return self.summary()
         if command == "/ping":
-            uptime = timedelta(seconds=int(time.monotonic() - self.started))
+            now = time.monotonic()
+            uptime = timedelta(seconds=int(now - self.started))
             active = sum(1 for t in self.targets if not t.disabled)
-            return notify.Message(title="🏓 Pong", body=f"Oppe i {uptime}. Overvåker {active} "
-                                  f"sider.", quiet=True)
+            bursting = sum(1 for t in self.targets if t.burst_until > now)
+            body = f"Oppe i {uptime}. Overvåker {active} sider."
+            if self.cfg.proxies:
+                body += f" {len(self.cfg.proxies)} proxyer."
+            if bursting:
+                body += f" ⚡ Turbo på {bursting} nå."
+            return notify.Message(title="🏓 Pong", body=body, quiet=True)
         if command in ("/hjelp", "/help"):
             return notify.Message(
                 title="Kommandoer",

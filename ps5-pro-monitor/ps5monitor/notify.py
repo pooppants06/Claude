@@ -98,6 +98,13 @@ def new_listing_message(item: dict) -> Message:
     )
 
 
+def burst_message(store: str, minutes: int) -> Message:
+    return Message(
+        title=f"⚡ Turbo på {store}",
+        body=f"Kildekoden endret seg – sjekker {store} tett de neste ~{minutes} minuttene.",
+        color=YELLOW, quiet=True)
+
+
 def store_health_message(store: str, down: bool, reason: str = "") -> Message:
     if down:
         return Message(

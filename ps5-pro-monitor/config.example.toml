@@ -36,6 +36,27 @@ host_min_delay_seconds = 4
 confirmations = 2
 confirm_delay_seconds = 20
 
+# ---- Turbo-modus ----
+# Når kildekoden til en side endrer seg (lagerstatus, pris eller f.eks. at lagerantallet
+# faller), går vakten i "turbo" og sjekker den siden tett en periode – nyttig for å ikke
+# miste et kort salgsvindu, og for å fange hele pris-/lagersekvensen under en slipp.
+burst_enabled = true
+burst_interval_seconds = 20     # hvor tett siden sjekkes mens turbo er på
+burst_duration_seconds = 3600   # hvor lenge turbo varer (sekunder). 3600 = 1 time
+burst_notify = false            # si fra (lydløst) når turbo slår inn
+
+# ---- Proxy-liste (valgfritt) ----
+# Med flere proxyer deles lasten på flere IP-er, så vakten trygt kan sjekke oftere – hver
+# enkelt IP holder seg innenfor host_min_delay, mens samlet takt blir raskere. Spesielt nyttig
+# sammen med turbo. Legg proxyene i filen proxies.txt (én per linje), eller rett her:
+#   proxies = ["http://bruker:passord@vert:port", "socks5://vert:port"]
+# (socks5 krever «pip install httpx[socks]».) Test dem med:  start.bat proxies
+proxies = []
+# Fil med proxyer (én per linje, # for kommentar). Standard: proxies.txt ved siden av denne fila.
+proxies_file = "proxies.txt"
+# Bruk din egen IP i tillegg til proxyene. false = bruk kun proxyene (når du har satt opp noen).
+proxy_include_direct = false
+
 # Hva som skal varsles. «På lager» varsles alltid.
 notify_price_changes = true
 min_price_change = 1          # kroner

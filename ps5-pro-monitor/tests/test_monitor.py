@@ -210,7 +210,8 @@ class StoreHealthTest(Base):
         def boom(request):
             raise __import__("httpx").ConnectError("nede")
 
-        self.monitor.fetcher.client._transport = __import__("httpx").MockTransport(boom)
+        for outlet in self.monitor.fetcher.outlets:
+            outlet.client._transport = __import__("httpx").MockTransport(boom)
         await self.monitor.check(self.target())
         self.assertIn("nettverksfeil", self.monitor.stores_down()["Testbutikken"])
 
@@ -373,6 +374,68 @@ class PrisjaktTest(Base):
         self.web.set(self.PJ, "<html><body>nytt design</body></html>")
         await self.monitor.run_once()
         self.assertIn("tilbudslisten", self.monitor.stores_down()["Prisjakt"])
+
+    async def test_uncovered_offer_change_bursts_prisjakt(self):
+        await self.start()
+        agg = self.monitor._find_target(self.PJ)
+        self.assertFalse(agg.burst_until > time.monotonic())
+        self.offers[1]["price"] = 9490  # Obs er ikke dekket direkte
+        self.publish()
+        await self.monitor.run_once()
+        self.assertTrue(agg.burst_until > time.monotonic())
+
+
+class BurstTest(Base):
+    def add_store(self, **kw):
+        self.cfg.stores.append(store(products=[URL], **kw))
+
+    async def test_confirmed_change_enters_burst_and_shortens_interval(self):
+        self.add_store()
+        self.web.set(URL, product_html(availability="OutOfStock", price=9990))
+        await self.start()
+        t = self.target()
+        self.assertFalse(t.burst_until > time.monotonic())
+        self.web.set(URL, product_html(availability="InStock", price=9990))
+        await self.monitor.run_once()
+        self.assertTrue(t.burst_until > time.monotonic())
+        self.assertEqual(self.monitor._effective_interval(t),
+                         self.cfg.settings.burst_interval_seconds)
+        t.burst_until = time.monotonic() - 1  # når turbo utløper
+        self.assertEqual(self.monitor._effective_interval(t), t.interval)
+
+    async def test_detail_only_change_bursts_without_notifying(self):
+        self.add_store(markers={"in_stock": [r'class="lager">(\d+) stk']})
+
+        def page(stock):
+            return product_html(availability="InStock", price=9990, sku="1001",
+                                extra=f'<div class="lager">{stock} stk</div>')
+
+        self.web.set(URL, page("5"))
+        await self.start()
+        t = self.target()
+        self.web.set(URL, page("3"))  # samme status og pris, bare lagerantallet faller
+        await self.monitor.run_once()
+        self.assertEqual(self.notifier.sent, [])
+        self.assertTrue(t.burst_until > time.monotonic())
+
+    async def test_burst_can_be_disabled_globally(self):
+        self.cfg.settings.burst_enabled = False
+        self.add_store()
+        self.web.set(URL, product_html(availability="OutOfStock"))
+        await self.start()
+        self.web.set(URL, product_html(availability="InStock"))
+        await self.monitor.run_once()
+        t = self.target()
+        self.assertFalse(t.burst_until > time.monotonic())
+        self.assertEqual(self.monitor._effective_interval(t), t.interval)
+
+    async def test_store_can_opt_out_of_burst(self):
+        self.add_store(burst=False)
+        self.web.set(URL, product_html(availability="OutOfStock"))
+        await self.start()
+        self.web.set(URL, product_html(availability="InStock"))
+        await self.monitor.run_once()
+        self.assertFalse(self.target().burst_until > time.monotonic())
 
 
 class RobustnessTest(Base):
