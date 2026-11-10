@@ -1,0 +1,16 @@
+# Proxy-liste for PS5 Pro-vakten.
+# Kopier denne fila til "proxies.txt" og legg inn én proxy per linje.
+# Alt etter # er kommentar, og tomme linjer hoppes over.
+#
+# Formater som støttes:
+#   http://vert:port
+#   http://brukernavn:passord@vert:port
+#   https://vert:port
+#   socks5://vert:port          (krever: pip install httpx[socks])
+#   vert:port                   (antas å være http)
+#
+# Test at proxyene virker med:  start.bat proxies   (viser utgående IP per proxy)
+#
+# http://bruker:passord@proxy1.example.com:8080
+# http://bruker:passord@proxy2.example.com:8080
+# socks5://10.0.0.5:1080

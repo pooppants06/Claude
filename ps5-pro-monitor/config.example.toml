@@ -1,0 +1,87 @@
+# ---------------------------------------------------------------------------------------
+# PS5 Pro-vakten – innstillinger.
+# Kopier denne filen til `config.toml` og fyll inn minst én varslingskanal.
+# (config.toml er unntatt fra git, så hemmelighetene dine blir liggende lokalt.)
+# ---------------------------------------------------------------------------------------
+
+[discord]
+# Kanalinnstillinger → Integrasjoner → Webhooks → Ny webhook → Kopier webhook-URL
+webhook_url = ""
+# Nevnes når noe kommer PÅ LAGER, f.eks. "@everyone" eller "<@din-bruker-id>". Tom = ingen.
+mention = ""
+username = "PS5 Pro-vakten"
+
+[telegram]
+# 1) Snakk med @BotFather, send /newbot og kopier tokenet hit.
+# 2) Send en melding til boten din, åpne https://api.telegram.org/bot<TOKEN>/getUpdates
+#    og kopier tallet under "chat": {"id": ...} hit.
+bot_token = ""
+chat_id = ""
+# Lar deg sende /status, /ping og /hjelp til boten.
+commands = true
+
+[monitor]
+# Hvor ofte hver produktside sjekkes (sekunder). Ikke sett denne lavere enn nødvendig –
+# butikkene tåler ikke masing, og du risikerer å bli stengt ute.
+interval_seconds = 90
+# Hvor ofte Prisjakt og kategorisidene (oppdagelse av nye sider) sjekkes.
+aggregator_interval_seconds = 300
+listing_interval_seconds = 900
+# Tilfeldig variasjon i intervallene (0.2 = ±20 %).
+jitter = 0.2
+# Minste pause mellom to forespørsler til samme nettsted.
+host_min_delay_seconds = 4
+
+# En endring må sees så mange ganger på rad før den varsles (hindrer falske alarmer).
+confirmations = 2
+confirm_delay_seconds = 20
+
+# ---- Turbo-modus ----
+# Når kildekoden til en side endrer seg (lagerstatus, pris eller f.eks. at lagerantallet
+# faller), går vakten i "turbo" og sjekker den siden tett en periode – nyttig for å ikke
+# miste et kort salgsvindu, og for å fange hele pris-/lagersekvensen under en slipp.
+burst_enabled = true
+burst_interval_seconds = 20     # hvor tett siden sjekkes mens turbo er på
+burst_duration_seconds = 3600   # hvor lenge turbo varer (sekunder). 3600 = 1 time
+burst_notify = false            # si fra (lydløst) når turbo slår inn
+
+# ---- Proxy-liste (valgfritt) ----
+# Med flere proxyer deles lasten på flere IP-er, så vakten trygt kan sjekke oftere – hver
+# enkelt IP holder seg innenfor host_min_delay, mens samlet takt blir raskere. Spesielt nyttig
+# sammen med turbo. Legg proxyene i filen proxies.txt (én per linje), eller rett her:
+#   proxies = ["http://bruker:passord@vert:port", "socks5://vert:port"]
+# (socks5 krever «pip install httpx[socks]».) Test dem med:  start.bat proxies
+proxies = []
+# Fil med proxyer (én per linje, # for kommentar). Standard: proxies.txt ved siden av denne fila.
+proxies_file = "proxies.txt"
+# Bruk din egen IP i tillegg til proxyene. false = bruk kun proxyene (når du har satt opp noen).
+proxy_include_direct = false
+
+# Hva som skal varsles. «På lager» varsles alltid.
+notify_price_changes = true
+min_price_change = 1          # kroner
+notify_sold_out = true
+notify_new_listings = true    # nye produktsider / nye butikker hos Prisjakt
+notify_store_health = true    # når en butikk ikke lar seg sjekke, og når den virker igjen
+fail_threshold = 5            # antall mislykkede forsøk på rad før det varsles
+
+# Statusmelding ved oppstart og en daglig oppsummering (tom streng = av).
+startup_summary = true
+daily_summary = "08:00"
+
+# Valgfritt «livstegn»: en URL som pinges jevnlig så lenge programmet kjører, f.eks. fra
+# healthchecks.io. Da får du beskjed derfra hvis PC-en slås av eller programmet stopper.
+heartbeat_url = ""
+heartbeat_interval_seconds = 300
+
+# Finn nye produktsider automatisk via `listings` i stores.toml.
+auto_discover = true
+# Følg butikkenes robots.txt.
+respect_robots = true
+# Hvordan programmet presenterer seg for butikkene.
+user_agent = "ps5pro-vakten/1.0 (personlig lager- og prisvarsler)"
+timeout_seconds = 25
+
+# [product]
+# name = "PlayStation 5 Pro"
+# match = '(?:playstation\W{0,3}5|\bps\W?5)\W{0,3}pro\b'   # hva som regnes som produktet

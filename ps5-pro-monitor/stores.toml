@@ -1,0 +1,168 @@
+# ---------------------------------------------------------------------------------------
+# Butikker og produktsider som overvåkes.
+#
+#   products   = produktsider som sjekkes hvert `interval_seconds` (se config.toml)
+#   listings   = kategorisider som skannes for NYE PS5 Pro-sider (nye varenummer/pakker)
+#   extractor  = butikkspesifikk leser av innebygd lagerdata (elkjop | kjell | netonnet)
+#   sku_regex  = plukker varenummeret ut av URL-stien (brukes til å forankre dataene)
+#   aliases    = butikkens navn hos Prisjakt, hvis det avviker fra `name`
+#   [store.markers] = regex som slår til på HTML-en rundt lagerstatusen (ekstra kilde)
+#
+# Vil du legge til egne sider uten å endre denne filen: lag `stores.local.toml` med samme
+# format. Butikker med samme `id` slås sammen. Test en ny side med:
+#     python -m ps5monitor check <URL>
+# ---------------------------------------------------------------------------------------
+
+[[store]]
+id = "elkjop"
+name = "Elkjøp"
+extractor = "elkjop"
+sku_regex = '/(\d+)/?$'
+products = [
+  "https://www.elkjop.no/product/gaming/spillkonsoller-og-tilbehor/playstation/ps5-playstation-5-spillkonsoll/playstation-5-pro-2tb-spillkonsoll/994805",
+  "https://www.elkjop.no/product/gaming/spillkonsoller-og-tilbehor/playstation/ps5-playstation-5-spillkonsoll/playstation-5-pro-2tb/830990",
+]
+listings = [
+  "https://www.elkjop.no/gaming/spillkonsoller-og-tilbehor/playstation/ps5-playstation-5-spillkonsoll",
+]
+
+[[store]]
+id = "komplett"
+name = "Komplett"
+sku_regex = '/product/(\d+)'
+products = [
+  "https://www.komplett.no/product/1346176/gaming/konsoller/playstation/playstation-5-pro-2tb",
+]
+listings = [
+  "https://www.komplett.no/category/12769/gaming/konsoller/playstation",
+]
+[store.markers]
+# Komplett viser lager med web-komponenten <komplett-stock-icon color="..."> og speiler det
+# i innebygd JSON ("stockIcon":"InStock"/"OutOfStock"). En fangstgruppe (...) blir detaljtekst.
+in_stock = [
+  '<komplett-stock-icon color="green"[^>]*title="Tilgjengelighet:\s*([^"]+)"',
+  '"stockIcon"\s*:\s*"InStock"',
+]
+out_of_stock = [
+  '"stockIcon"\s*:\s*"OutOfStock"',
+  '<komplett-stock-icon color="red"',
+  'stockstatus-stock-details">\s*Ikke p(?:å|&#xE5;) lager',
+]
+
+[[store]]
+id = "power"
+name = "Power"
+sku_regex = '/p-(\d+)/?$'
+products = [
+  "https://www.power.no/gaming/playstation/playstation-konsoll/playstation-5-pro-konsoll/p-3645713/",
+  "https://www.power.no/gaming/playstation/playstation-konsoll/playstation-5-pro-konsoll-ea-sports-fc-26-pakke/p-4185552/",
+]
+listings = [
+  "https://www.power.no/c/8009/gaming/playstation/playstation-konsoll/",
+]
+
+[[store]]
+id = "netonnet"
+name = "NetOnNet"
+extractor = "netonnet"
+sku_regex = '/(\d+)\.\d+/?$'
+products = [
+  "https://www.netonnet.no/art/gaming/spillogkonsoll/playstation/sony-playstation-5-pro-2025/1060020.15683/",
+]
+listings = [
+  "https://www.netonnet.no/art/gaming/spillogkonsoll/playstation/playstation-konsoll",
+]
+
+[[store]]
+id = "proshop"
+name = "Proshop"
+aliases = ["Proshop.no"]
+sku_regex = '/(\d+)/?$'
+products = [
+  "https://www.proshop.no/Spillkonsoll/Sony-PlayStation-5-Pro/3417363",
+  "https://www.proshop.no/Spillkonsoll/Sony-PlayStation-5-Pro/3301537",
+]
+listings = [
+  "https://www.proshop.no/Sony-PlayStation-5-Pro",
+]
+
+[[store]]
+id = "kjell"
+name = "Kjell & Company"
+aliases = ["Kjell.com", "Kjell"]
+extractor = "kjell"
+sku_regex = '-p(\d+)/?$'
+products = [
+  "https://www.kjell.com/no/produkter/videospill-og-gaming/spillkonsoll/sony-playstation-5-pro-spillkonsoll-p69968",
+]
+listings = [
+  "https://www.kjell.com/no/produkter/videospill-og-gaming/spillkonsoll",
+]
+
+[[store]]
+id = "elon"
+name = "Elon"
+sku_regex = '-(\d+)/?$'
+products = [
+  "https://www.elon.no/playstation-5-pro-console-2-tb-152167",
+]
+
+[[store]]
+id = "clasohlson"
+name = "Clas Ohlson"
+products = [
+  "https://www.clasohlson.com/no/Sony-PlayStation-5-Pro---PS5-spillkonsoll,-2-TB/p/39-4731",
+]
+
+[[store]]
+id = "maxgaming"
+name = "MaxGaming"
+aliases = ["MaxGaming.no"]
+products = [
+  "https://www.maxgaming.no/no/playstation-5/playstation-5-pro-2tb-ps5-pro",
+]
+
+[[store]]
+id = "computersalg"
+name = "Computersalg"
+aliases = ["CS MEGASTORE", "csmegastore", "Computersalg.no"]
+sku_regex = '/i/(\d+)/'
+products = [
+  "https://www.csmegastore.no/i/25072641/sony-playstation-5-pro-gaming-konsole-2-tb-ssd-digital",
+]
+[store.markers]
+in_stock = ['class="productAvailability">\s*<span class="stock green">']
+out_of_stock = ['class="productAvailability">\s*<span class="stock red">']
+
+[[store]]
+id = "dustin"
+name = "Dustin"
+aliases = ["Dustin.no", "Dustin Home"]
+sku_regex = '/product/(\d+)'
+products = [
+  "https://www.dustin.no/product/5020022987/playstation-5-pro",
+]
+
+[[store]]
+id = "cdon"
+name = "CDON"
+products = [
+  "https://cdon.no/produkt/sony-playstation-5-pro-c3ac680c9cad51c7/",
+]
+
+# ---------------------------------------------------------------------------------------
+# Prisjakt brukes som ekstra kilde. Tilbudslisten der dekker butikker som ikke kan leses
+# direkte (Obs, HomeIT, Coolshop, CDON m.fl.) og fanger opp nye butikker automatisk.
+# Tilbud fra butikker som allerede overvåkes direkte varsles ikke dobbelt.
+# ---------------------------------------------------------------------------------------
+[[aggregator]]
+id = "prisjakt"
+name = "Prisjakt"
+type = "prisjakt"
+link_regex = '^/product\.php\?p=\d+$'
+products = [
+  "https://www.prisjakt.no/product.php?p=13395263",
+]
+listings = [
+  "https://www.prisjakt.no/s/ps5-pro/",
+]
